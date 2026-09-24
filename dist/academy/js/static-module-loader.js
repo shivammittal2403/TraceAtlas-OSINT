@@ -1,5 +1,5 @@
 /**
- * Static Module Loader for FreeOSINT.org
+ * Static Module Loader for TraceAtlas Academy
  * This file provides functionality to load modules directly from the modules-data.js file
  * which works both locally and when hosted on GitHub Pages
  */

@@ -1,5 +1,5 @@
 /**
- * Utility functions for FreeOSINT.org
+ * Utility functions for TraceAtlas Academy
  * Contains user progress tracking and UI helper functions
  */
 

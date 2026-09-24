@@ -1,5 +1,5 @@
 /**
- * Dark mode functionality for FreeOSINT.org
+ * Dark mode functionality for TraceAtlas Academy
  * Handles theme switching and persistence
  */
 

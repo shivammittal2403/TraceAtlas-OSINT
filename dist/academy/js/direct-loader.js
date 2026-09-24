@@ -1,5 +1,5 @@
 /**
- * Direct Module Loader for FreeOSINT.org
+ * Direct Module Loader for TraceAtlas Academy
  * This file provides functionality to load modules directly from the modules directory
  * when the site is hosted on GitHub Pages or other static hosting
  */

@@ -1,20 +1,20 @@
 /**
- * Main JavaScript file for FreeOSINT.org
+ * Main JavaScript file for TraceAtlas Academy
  */
 
 // Store user progress in localStorage
 const userProgress = {
     // Get module progress from localStorage or initialize empty object
     getModuleProgress: function(moduleId) {
-        const progress = JSON.parse(localStorage.getItem('freeosint_progress') || '{}');
+        const progress = JSON.parse(localStorage.getItem('traceatlas_progress') || '{}');
         return progress[moduleId] || { completed: false, currentSection: 0, completedSections: [] };
     },
     
     // Save module progress to localStorage
     saveModuleProgress: function(moduleId, progressData) {
-        const progress = JSON.parse(localStorage.getItem('freeosint_progress') || '{}');
+        const progress = JSON.parse(localStorage.getItem('traceatlas_progress') || '{}');
         progress[moduleId] = progressData;
-        localStorage.setItem('freeosint_progress', JSON.stringify(progress));
+        localStorage.setItem('traceatlas_progress', JSON.stringify(progress));
     },
     
     // Mark a section as completed
@@ -66,13 +66,13 @@ const cookieManager = {
         const completedModules = this.getCompletedModules();
         if (!completedModules.includes(moduleId)) {
             completedModules.push(moduleId);
-            document.cookie = `freeosint_completed=${JSON.stringify(completedModules)}; expires=${expiryDate.toUTCString()}; path=/`;
+            document.cookie = `traceatlas_completed=${JSON.stringify(completedModules)}; expires=${expiryDate.toUTCString()}; path=/`;
         }
     },
     
     // Get all completed modules from cookie
     getCompletedModules: function() {
-        const name = 'freeosint_completed=';
+        const name = 'traceatlas_completed=';
         const decodedCookie = decodeURIComponent(document.cookie);
         const cookieArray = decodedCookie.split(';');
         
@@ -99,7 +99,7 @@ const cookieManager = {
     clearAllCompleted: function() {
         const expiryDate = new Date();
         expiryDate.setFullYear(expiryDate.getFullYear() - 1);
-        document.cookie = `freeosint_completed=; expires=${expiryDate.toUTCString()}; path=/`;
+        document.cookie = `traceatlas_completed=; expires=${expiryDate.toUTCString()}; path=/`;
     }
 };
 

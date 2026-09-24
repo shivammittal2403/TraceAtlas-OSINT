@@ -1,5 +1,5 @@
 /**
- * Training module functionality for FreeOSINT.org
+ * Training module functionality for TraceAtlas Academy
  * Handles module listing, loading, and navigation
  */
 
@@ -99,7 +99,7 @@ async function loadModules() {
             `${basePath}modules/index.json`,
             'modules/index.json',
             '/modules/index.json',
-            '/FreeOSINT/modules/index.json'
+            '/academy/modules/index.json'
         ];
         
         let modules = null;
@@ -517,7 +517,7 @@ async function loadModule(module) {
             `${basePath}modules/${module.id}.json`,
             `modules/${module.id}.json`,
             `/modules/${module.id}.json`,
-            `/FreeOSINT/modules/${module.id}.json`
+            `/academy/modules/${module.id}.json`
         ];
         
         // Try each path until we find one that works
