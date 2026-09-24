@@ -1,5 +1,5 @@
 /**
- * Ethics Agreement functionality for FreeOSINT.org
+ * Ethics Agreement functionality for TraceAtlas Academy
  * Ensures users agree to use OSINT tools ethically and responsibly
  */
 
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="bg-red-50 dark:bg-red-900/30 p-4 rounded-lg mb-6 border-l-4 border-red-500 dark:border-red-400">
                 <h3 class="font-bold text-red-700 dark:text-red-300 mb-2">Agreement Required</h3>
                 <p class="text-gray-700 dark:text-gray-300">
-                    We're sorry, but you must agree to our ethics statement to use FreeOSINT.org.
+                    We're sorry, but you must agree to our ethics statement to use TraceAtlas Academy.
                 </p>
                 <p class="text-gray-700 dark:text-gray-300 mt-4">
                     This agreement is necessary to ensure that our educational resources are used responsibly and legally.

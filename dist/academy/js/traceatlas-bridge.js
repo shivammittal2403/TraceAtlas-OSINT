@@ -1,15 +1,13 @@
 (function(){
   if(document.querySelector('.traceatlas-bridge')) return;
-  var path=location.pathname;
-  var academyRoot=path.includes('/pages/')||path.includes('/docs/')?'../index.html':'index.html';
   var bar=document.createElement('div');
   bar.className='traceatlas-bridge';
-  bar.innerHTML='<a class="traceatlas-bridge__brand" href="/"><span class="traceatlas-bridge__mark">⌁</span><span>TraceAtlas</span></a><nav class="traceatlas-bridge__links" aria-label="TraceAtlas Academy"><a href="'+academyRoot+'">Academy home</a><a href="'+(path.includes('/pages/')?'training.html':'pages/training.html')+'">Training</a><a href="'+(path.includes('/pages/')?'resources.html':'pages/resources.html')+'">Resources</a><a href="/">Tool directory</a></nav>';
+  bar.innerHTML='<a class="traceatlas-bridge__brand" href="/"><span class="traceatlas-bridge__mark">⌁</span><span>TraceAtlas</span></a><nav class="traceatlas-bridge__links" aria-label="TraceAtlas Academy"><a href="/academy/">Academy home</a><a href="/academy/training">Training</a><a href="/academy/resources">Resources</a><a href="/">Tool directory</a></nav>';
   document.body.insertBefore(bar,document.body.firstChild);
 
   var note=document.createElement('div');
   note.className='traceatlas-attribution';
-  note.innerHTML='Academy materials adapted from <a href="https://github.com/FreeOSINT/FreeOSINT.github.io" target="_blank" rel="noopener noreferrer">FreeOSINT</a> under the MIT License. Use only for lawful, ethical research.';
+  note.textContent='TraceAtlas Academy is provided under the MIT License. Use these materials only for lawful, ethical research.';
   document.body.appendChild(note);
 
   document.addEventListener('error',function(event){

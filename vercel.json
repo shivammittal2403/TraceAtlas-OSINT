@@ -2,6 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/academy/index.html", "destination": "/academy", "permanent": true },
+    { "source": "/academy/pages/training.html", "destination": "/academy/training", "permanent": true },
+    { "source": "/academy/pages/resources.html", "destination": "/academy/resources", "permanent": true }
+  ],
   "headers": [
     {
       "source": "/(.*)",

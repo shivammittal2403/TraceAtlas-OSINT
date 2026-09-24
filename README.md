@@ -13,8 +13,7 @@ TraceAtlas is an original, responsive OSINT resource directory inspired by the i
 - Journal, about, contact, privacy and terms views
 - Integrated TraceAtlas Academy at `/academy/`
 - 19 complete OSINT training modules with lessons, exercises and quizzes
-- Training catalog, curriculum, ethics, community-action and resources pages
-- Module creator and module-authoring documentation
+- Focused three-page Academy: Home, Training and Resources
 - Static, dependency-free deployment for Vercel
 
 ## Run locally
@@ -31,8 +30,6 @@ Use only lawfully accessible information. Do not bypass access controls, imperso
 
 ## Academy attribution
 
-The Academy section includes and adapts the MIT-licensed
-[FreeOSINT project](https://github.com/FreeOSINT/FreeOSINT.github.io). The
-original copyright and permission notice are preserved in
-`dist/academy/LICENSE`, with integration details in
-`dist/academy/ATTRIBUTION.md`.
+The Academy section adapts MIT-licensed educational material. The original
+copyright and permission notice are preserved in `dist/academy/LICENSE`, with
+integration details in `dist/academy/ATTRIBUTION.md`.
