@@ -4,7 +4,9 @@
   "cleanUrls": true,
   "redirects": [
     { "source": "/academy/index.html", "destination": "/academy", "permanent": true },
+    { "source": "/academy/pages/training", "destination": "/academy/training", "permanent": true },
     { "source": "/academy/pages/training.html", "destination": "/academy/training", "permanent": true },
+    { "source": "/academy/pages/resources", "destination": "/academy/resources", "permanent": true },
     { "source": "/academy/pages/resources.html", "destination": "/academy/resources", "permanent": true }
   ],
   "headers": [
