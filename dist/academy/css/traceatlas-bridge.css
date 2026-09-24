@@ -1,0 +1,31 @@
+:root{
+  --trace-ink:#13231d;
+  --trace-brand:#1b5b43;
+  --trace-accent:#bbf451;
+  --trace-paper:#fbfdfa;
+}
+.traceatlas-bridge{
+  position:relative;
+  z-index:9999;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  min-height:44px;
+  padding:8px max(18px,calc((100vw - 1160px)/2));
+  background:var(--trace-brand);
+  color:#fff;
+  font:700 14px/1.35 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  box-shadow:0 1px 0 rgba(0,0,0,.12);
+}
+.traceatlas-bridge__brand{display:flex;align-items:center;gap:9px;color:#fff;text-decoration:none}
+.traceatlas-bridge__mark{display:grid;place-items:center;width:27px;height:27px;border-radius:9px;background:var(--trace-accent);color:var(--trace-ink);font-size:17px}
+.traceatlas-bridge__links{display:flex;align-items:center;gap:15px}
+.traceatlas-bridge__links a{color:#eafff2;text-decoration:none}
+.traceatlas-bridge__links a:hover,.traceatlas-bridge__links a:focus-visible{color:var(--trace-accent)}
+.traceatlas-attribution{padding:12px 18px;background:#eaf3ed;color:#385348;text-align:center;font:600 12px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+.traceatlas-attribution a{color:var(--trace-brand);text-decoration:underline}
+@media(max-width:680px){
+  .traceatlas-bridge{align-items:flex-start;flex-direction:column;padding:9px 14px}
+  .traceatlas-bridge__links{gap:12px;flex-wrap:wrap}
+}
