@@ -96,6 +96,15 @@ class RelationshipType(str, Enum):
     AFFILIATED_WITH = "affiliated_with"
     LOCATED_AT = "located_at"
     RELATED_TO = "related_to"
+    # infrastructure fabric (added with transform engine)
+    DELEGATED_TO = "delegated_to"
+    CERTIFICATE_FOR = "certificate_for"
+    ISSUED_BY = "issued_by"
+    IN_ASN = "in_asn"
+    HOSTED_BY = "hosted_by"
+    PUBLISHED = "published"
+    LINKS_TO = "links_to"
+    CONTAINS_OBSERVATION = "contains_observation"
 
 
 class VerificationDecision(str, Enum):
