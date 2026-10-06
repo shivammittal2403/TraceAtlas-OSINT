@@ -1,0 +1,17 @@
+# TraceAtlas governed source catalog: vulnerabilities
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_nvd
+    name: NVD REST API
+    url: https://services.nvd.nist.gov/rest/json/cves/2.0
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null
+  - id: src_osv
+    name: Google OSV.dev API
+    url: https://api.osv.dev/v1/query
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

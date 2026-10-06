@@ -1,0 +1,10 @@
+# TraceAtlas governed source catalog: asn
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_statping
+    name: Stat.AS hoster stats
+    url: https://stat.ripe.net
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

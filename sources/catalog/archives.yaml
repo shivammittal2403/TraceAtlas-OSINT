@@ -1,0 +1,10 @@
+# TraceAtlas governed source catalog: archives
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_wayback
+    name: Internet Archive Wayback Machine CDX
+    url: https://web.archive.org/cdx/
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

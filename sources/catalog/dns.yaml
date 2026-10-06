@@ -1,0 +1,17 @@
+# TraceAtlas governed source catalog: dns
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_google_dns
+    name: Google Public DNS (DoH)
+    url: https://dns.google/resolve
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null
+  - id: src_cloudflare_dns
+    name: Cloudflare DNS (DoH)
+    url: https://cloudflare-dns.com/dns-query
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

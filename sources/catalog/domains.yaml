@@ -1,0 +1,17 @@
+# TraceAtlas governed source catalog: domains
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_rdap_org
+    name: RDAP bootstrap (IANA)
+    url: https://rdap.org
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null
+  - id: src_crtsh
+    name: crt.sh Certificate Transparency
+    url: https://crt.sh
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

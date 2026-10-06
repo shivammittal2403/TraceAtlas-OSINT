@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TraceAtlas Connector Manifest",
+  "type": "object",
+  "required": ["id", "protocol", "enabled"],
+  "properties": {
+    "id": {"type": "string"},
+    "protocol": {"enum": ["http", "rest", "graphql", "rss", "atom", "dns", "rdap", "stix", "taxii", "misp", "stream", "file_feed", "webhook", "dataset", "archive", "search"]},
+    "enabled": {"type": "boolean", "description": "MUST remain false until qualification passes."},
+    "timeout_seconds": {"type": "integer", "default": 30},
+    "rate_limit_per_minute": {"type": "integer", "default": 10}
+  },
+  "additionalProperties": false
+}

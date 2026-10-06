@@ -1,0 +1,3 @@
+"""STUB - security.rate_limit: planned, not implemented."""
+
+# Intentionally unimplemented; see docs/security/threat-model.md.
