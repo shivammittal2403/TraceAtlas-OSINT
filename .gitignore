@@ -1,1 +1,6 @@
-(empty)
+# Compiled and build artifacts
+__pycache__/
+*.pyc
+
+# Checkpoints/Temp data
+.traceatlas-checkpoints/

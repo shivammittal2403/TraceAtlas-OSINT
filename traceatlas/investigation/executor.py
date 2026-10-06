@@ -47,6 +47,9 @@ class TaskExecutor:
                 token: CancellationToken | None = None) -> ExecutionOutcome:
         start = time.monotonic()
         token = token or CancellationToken(name=f"task:{task.kind}")
+        # enforce the state machine: PENDING tasks must be marked READY first
+        if task.status == TaskStatus.PENDING:
+            task.status = task_transition(task.status, TaskStatus.READY)
         task.status = task_transition(task.status, TaskStatus.RUNNING)
         task.started_at = utcnow_safe()
         last_error = ""

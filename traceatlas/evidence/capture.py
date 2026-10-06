@@ -56,6 +56,14 @@ class CapturedEvidence:
 class EvidenceCapture:
     def __init__(self, store: EvidenceStore | None = None) -> None:
         self.store = store or EvidenceStore()
+        # id -> CapturedEvidence index of everything captured in-process.
+        # Blobs live content-addressed in the store; this index lets runners
+        # attach the exact EvidenceRecord objects to an InvestigationContext.
+        self.records: dict[str, CapturedEvidence] = {}
+
+    def _register(self, captured: CapturedEvidence) -> CapturedEvidence:
+        self.records[captured.record.id] = captured
+        return captured
 
     def collect(self, ctx: CaptureContext, data: bytes,
                 media_type: str = "application/octet-stream") -> CapturedEvidence:
@@ -94,7 +102,8 @@ class EvidenceCapture:
             )],
         )
         dedup = sha256_hex(data) == digest and self._blob_previously_seen(ctx, digest)
-        return CapturedEvidence(record=record, provenance=prov, digest=digest, deduplicated=dedup)
+        return self._register(CapturedEvidence(record=record, provenance=prov,
+                                               digest=digest, deduplicated=dedup))
 
     def _blob_previously_seen(self, ctx: CaptureContext, digest: str) -> bool:
         # put() overwrites atomically; we approximate dedup detection via size check
@@ -130,7 +139,8 @@ class EvidenceCapture:
                 input_refs=[parent.record.id], output_ref=record.id,
             )],
         )
-        return CapturedEvidence(record=record, provenance=prov, digest=digest, deduplicated=False)
+        return self._register(CapturedEvidence(record=record, provenance=prov,
+                                               digest=digest, deduplicated=False))
 
 
 class ReplayManifest:
