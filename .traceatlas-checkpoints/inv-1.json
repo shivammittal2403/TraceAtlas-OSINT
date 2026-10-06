@@ -1,0 +1,18 @@
+{
+  "case_id": "case-1",
+  "completed_task_kinds": [
+    "collect.dns"
+  ],
+  "cost_units_spent": 1.0,
+  "created_at": 1791306558.6985836,
+  "entity_keys": [],
+  "evidence_ids": [],
+  "investigation_id": "inv-1",
+  "notes": {},
+  "task_states": {
+    "task_9adb3137-0427-4f7a-a782-5973a52ad086": "pending",
+    "task_a2768b30-95d5-45d5-84ba-414f5c39a7fc": "succeeded"
+  },
+  "version": 1,
+  "wave": 0
+}
