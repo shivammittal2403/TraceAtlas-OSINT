@@ -1,0 +1,17 @@
+# TraceAtlas governed source catalog: packages
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_pypi_json
+    name: PyPI JSON API
+    url: https://pypi.org/pypi/<package>/json
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null
+  - id: src_npm_registry
+    name: npm registry API
+    url: https://registry.npmjs.org
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

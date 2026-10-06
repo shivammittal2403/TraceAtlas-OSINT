@@ -1,0 +1,8 @@
+# Prompt template: adversarial_review
+# Status: DRAFT — not wired to any model gateway yet.
+version: 0
+enabled: false
+system: |
+  (placeholder)
+user: |
+  (placeholder)

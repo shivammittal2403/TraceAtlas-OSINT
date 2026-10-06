@@ -1,0 +1,10 @@
+# TraceAtlas governed source catalog: ip
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_ipinfo_lite
+    name: ipinfo.io free endpoint
+    url: https://ipinfo.io
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

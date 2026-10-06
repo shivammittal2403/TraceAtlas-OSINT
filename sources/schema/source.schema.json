@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TraceAtlas Source Manifest",
+  "type": "object",
+  "required": ["id", "name", "kind", "qualification"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^src_[a-z0-9_.-]+$"},
+    "name": {"type": "string"},
+    "kind": {"enum": ["website", "api", "registry", "dataset", "archive", "feed"]},
+    "url": {"type": "string"},
+    "qualification": {"enum": ["documented", "integration_tested", "live_verified", "production_qualified"]},
+    "requires_credentials": {"type": "boolean", "default": false},
+    "cost_per_query_usd": {"type": "number", "minimum": 0, "default": 0},
+    "robots_respecting": {"type": "boolean", "default": true},
+    "connector": {"type": "string"},
+    "notes": {"type": "string"}
+  },
+  "additionalProperties": false
+}

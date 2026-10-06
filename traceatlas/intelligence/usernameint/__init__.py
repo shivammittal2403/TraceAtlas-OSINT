@@ -1,0 +1,1 @@
+"""Intelligence discipline: usernameint (scaffold)."""

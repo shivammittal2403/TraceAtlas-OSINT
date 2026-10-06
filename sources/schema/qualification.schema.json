@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TraceAtlas Source Qualification Record",
+  "type": "object",
+  "required": ["source_id", "level", "evidence"],
+  "properties": {
+    "source_id": {"type": "string"},
+    "level": {"enum": ["documented", "integration_tested", "live_verified", "production_qualified"]},
+    "evidence": {"type": "array", "items": {"type": "string"}, "description": "Test ids / evidence ids proving the level."},
+    "tested_at": {"type": "string", "format": "date-time"},
+    "tester": {"type": "string"}
+  },
+  "additionalProperties": false
+}

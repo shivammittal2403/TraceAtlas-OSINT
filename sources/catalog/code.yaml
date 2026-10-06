@@ -1,0 +1,10 @@
+# TraceAtlas governed source catalog: code
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_github_api
+    name: GitHub public REST API
+    url: https://api.github.com
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

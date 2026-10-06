@@ -1,0 +1,17 @@
+# TraceAtlas governed source catalog: cti
+# Qualification levels start at 'documented'. Entries here are NOT integration-tested.
+sources:
+  - id: src_urlhaus
+    name: abuse.ch URLhaus (public CSV/JSON)
+    url: https://urlhaus-api.abuse.ch
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null
+  - id: src_threatfox
+    name: abuse.ch ThreatFox
+    url: https://threatfox-api.abuse.ch
+    kind: api
+    qualification: documented
+    requires_credentials: false
+    connector: null

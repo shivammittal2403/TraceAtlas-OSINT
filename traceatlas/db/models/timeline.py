@@ -1,0 +1,3 @@
+"""STUB - db.models.timeline: ORM model/repository not implemented yet."""
+
+# Intentionally unimplemented.
