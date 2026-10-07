@@ -83,8 +83,10 @@ class TaskExecutor:
             if ok:
                 task.status = task_transition(task.status, TaskStatus.SUCCEEDED)
                 task.finished_at = utcnow_safe()
+                # retried must reflect actual attempt count, not just failure exits
                 return ExecutionOutcome(task.id, task.kind, TaskStatus.SUCCEEDED,
-                                        task.attempts, _ms(start))
+                                        task.attempts, _ms(start),
+                                        retried=task.attempts > 1)
             retry_now, delay = self.retry.evaluate(task.attempts, error)
             if retry_now and task.can_retry():
                 task.status = task_transition(task.status, TaskStatus.FAILED)
