@@ -26,7 +26,11 @@ from traceatlas.ai_workforce.departments.infrastructure import (
 from traceatlas.ai_workforce.employee import Employee, JobDescription, ModelPolicy
 from traceatlas.ai_workforce.manager import DepartmentManager
 from traceatlas.ai_workforce.permissions import GLOBAL_PROHIBITED, PermissionSet
-from traceatlas.ai_workforce.result import CandidateFactPayload, ResultStatus
+from traceatlas.ai_workforce.result import (
+    CandidateFactPayload,
+    EmployeeResult,
+    ResultStatus,
+)
 from traceatlas.ai_workforce.supervision import ComplianceSupervisor, QualitySupervisor
 from traceatlas.ai_workforce.task import Authorization, Priority, Scope, Task, TaskAssignment
 from traceatlas.trust.case_memory import CaseMemory

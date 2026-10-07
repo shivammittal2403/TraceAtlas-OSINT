@@ -267,7 +267,9 @@ class CaseMemory:
     def to_dict(self) -> dict:
         return {
             "case_id": self.case_id,
+            "sources": [s.to_dict() for s in self.sources.values()],
             "facts": [f.to_dict() for f in self.facts.values()],
+            "insights": [i.to_dict() for i in self.insights.values()],
             "observations": [o.to_dict() for o in self.observations.values()],
             "entities": [e.to_dict() for e in self.entities.values()],
             "relationships": [r.to_dict() for r in self.relationships.values()],
