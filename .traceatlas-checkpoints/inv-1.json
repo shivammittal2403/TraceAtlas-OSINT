@@ -4,14 +4,14 @@
     "collect.dns"
   ],
   "cost_units_spent": 1.0,
-  "created_at": 1791344109.3610826,
+  "created_at": 1791345550.7534678,
   "entity_keys": [],
   "evidence_ids": [],
   "investigation_id": "inv-1",
   "notes": {},
   "task_states": {
-    "task_7e81a2d2-a941-4d7a-89fc-8e5fc8f2b62a": "succeeded",
-    "task_80e61f96-d65e-474a-86dc-9019fa716ba2": "pending"
+    "task_7e9c1345-e1f1-43c4-9007-621d50e1e475": "succeeded",
+    "task_cd342f65-97d9-436e-ac17-e497d96f2cfe": "pending"
   },
   "version": 1,
   "wave": 0
