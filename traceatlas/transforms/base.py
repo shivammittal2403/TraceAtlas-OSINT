@@ -26,6 +26,8 @@ class TransformInput:
     investigation_id: str = ""
     task_id: str = ""
     options: dict = field(default_factory=dict)
+    capture: object = None        # EvidenceCapture; injected by runners, not serialized
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass

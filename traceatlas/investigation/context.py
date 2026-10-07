@@ -29,6 +29,8 @@ class InvestigationContext:
     evidence: dict[str, EvidenceRecord] = field(default_factory=dict)  # id -> record
     claims: list[Claim] = field(default_factory=list)
     gaps: list[InformationGap] = field(default_factory=list)
+    verifications: list = field(default_factory=list)  # VerificationRecord
+    contradictions: list = field(default_factory=list)  # Contradiction
     errors: list[str] = field(default_factory=list)
     cost_units_spent: float = 0.0
     budget_max_cost_units: float = 100.0
@@ -44,7 +46,13 @@ class InvestigationContext:
 
     def upsert_entity(self, key: str, entity_type: str, display_name: str,
                       attributes: dict | None = None) -> Entity:
-        """Idempotent entity creation keyed by stable natural key."""
+        """Idempotent entity creation keyed by stable natural key.
+
+        entity_type must be a value of the canonical core.enums.EntityType
+        registry (the same vocabulary transforms emit in EntityDrafts); an
+        unregistered type fails LOUDLY rather than silently degrading to
+        UNKNOWN, so transform/context schema drift is caught in tests.
+        """
         existing = self.entities.get(key)
         if existing is not None:
             if attributes:
@@ -54,8 +62,12 @@ class InvestigationContext:
             return existing
         from traceatlas.core.enums import EntityType
 
-        etype = EntityType(entity_type) if entity_type in {e.value for e in EntityType} \
-            else EntityType.UNKNOWN
+        try:
+            etype = EntityType(entity_type)
+        except ValueError as exc:
+            raise TraceAtlasError(
+                f"entity_type {entity_type!r} is not registered in "
+                f"core.enums.EntityType (key={key!r})") from exc
         ent = Entity(case_id=self.case_id, entity_type=etype, display_name=display_name,
                      attributes=attributes or {})
         self.entities[key] = ent

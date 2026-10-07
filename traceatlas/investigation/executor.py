@@ -47,6 +47,9 @@ class TaskExecutor:
                 token: CancellationToken | None = None) -> ExecutionOutcome:
         start = time.monotonic()
         token = token or CancellationToken(name=f"task:{task.kind}")
+        # enforce the state machine: PENDING tasks must be marked READY first
+        if task.status == TaskStatus.PENDING:
+            task.status = task_transition(task.status, TaskStatus.READY)
         task.status = task_transition(task.status, TaskStatus.RUNNING)
         task.started_at = utcnow_safe()
         last_error = ""
@@ -81,7 +84,8 @@ class TaskExecutor:
                 task.status = task_transition(task.status, TaskStatus.SUCCEEDED)
                 task.finished_at = utcnow_safe()
                 return ExecutionOutcome(task.id, task.kind, TaskStatus.SUCCEEDED,
-                                        task.attempts, _ms(start))
+                                        task.attempts, _ms(start),
+                                        retried=task.attempts > 1)
             retry_now, delay = self.retry.evaluate(task.attempts, error)
             if retry_now and task.can_retry():
                 task.status = task_transition(task.status, TaskStatus.FAILED)
@@ -94,7 +98,7 @@ class TaskExecutor:
             task.finished_at = utcnow_safe()
             return ExecutionOutcome(task.id, task.kind, TaskStatus.FAILED,
                                     task.attempts, _ms(start), error=error,
-                                    retried=task.attempts > 1)
+                                    retried=self.retry.evaluate(task.attempts - 1, error)[0] or task.attempts > 1)
 
 
 def _ms(start: float) -> float:

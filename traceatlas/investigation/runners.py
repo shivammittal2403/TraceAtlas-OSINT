@@ -27,12 +27,24 @@ def _ti(task: Task, kind: str, value: str, capture) -> TransformInput:
                           metadata=dict(task.payload))
 
 
+class MissingTransformError(Exception):
+    """A runner referenced a transform id that is not in default_registry()."""
+
+
+def _get_transform(registry, transform_id: str):
+    """Registry.get raises KeyError for unknown ids; surface it as a typed error."""
+    try:
+        return registry.get(transform_id)
+    except KeyError as exc:
+        raise MissingTransformError(str(exc)) from exc
+
+
 def _ingest_result(res, ctx) -> None:
-    """Merge a TransformResult into the InvestigationContext."""
-    for ev_id in res.evidence_ids:
-        rec = getattr(ctx, "_evidence_records", {}).get(ev_id)
-        if rec is not None:
-            ctx.add_evidence(rec)
+    """Merge a TransformResult into the InvestigationContext.
+
+    Evidence records are re-fetched from the capture's content-addressed store
+    via the ids carried on the result (the transform attached them itself).
+    """
     ctx.observations.extend(res.observations)
     key_map: dict[str, str] = {}
     for ent in res.entities:
@@ -78,9 +90,7 @@ def make_collect_runner(transform_id: str, input_kind: str, capture):
     registry = default_registry(capture=capture)
 
     def runner(task: Task, ctx) -> tuple[bool, str]:
-        transform = registry.get(transform_id)
-        if transform is None:
-            return False, f"transform {transform_id} not registered"
+        transform = _get_transform(registry, transform_id)
         targets = [t for t in _targets_from(task) if t["kind"] == input_kind]
         if not targets:
             return True, ""  # nothing applicable for this input type: vacuous success
@@ -92,6 +102,7 @@ def make_collect_runner(transform_id: str, input_kind: str, capture):
             if res.ok:
                 any_ok = True
                 _ingest_result(res, ctx)
+                _attach_evidence(ctx, capture, res.evidence_ids)
             else:
                 errors.extend(res.errors)
         if any_ok:
@@ -101,25 +112,42 @@ def make_collect_runner(transform_id: str, input_kind: str, capture):
     return runner
 
 
+def _attach_evidence(ctx, capture, evidence_ids: list[str]) -> None:
+    """Pull EvidenceRecords produced during this transform into the context.
+
+    Transforms capture raw bytes through the shared EvidenceCapture; records
+    are looked up via capture.records (id -> EvidenceRecord). Missing records
+    are recorded as context errors rather than silently dropped.
+    """
+    known = getattr(capture, "records", None) or {}
+    for ev_id in evidence_ids:
+        if ev_id in ctx.evidence:
+            continue
+        rec = known.get(ev_id)
+        if rec is not None:
+            ctx.add_evidence(rec)
+        else:
+            ctx.errors.append(f"evidence record {ev_id} missing from capture index")
+
+
 def make_analyze_runner(analyzer_id: str, capture):
     registry = default_registry(capture=capture)
 
     def runner(task: Task, ctx) -> tuple[bool, str]:
-        analyzer = registry.get(analyzer_id)
-        if analyzer is None:
-            return False, f"analyzer {analyzer_id} not registered"
-        # analyze over every IP observed so far (ip_geo/asn) — derived from DNS obs
+        analyzer = _get_transform(registry, analyzer_id)
+        # analyze over every IP observed so far (asn/geo) — derived from DNS obs
         ips = sorted({o.obj for o in ctx.observations
                       if o.predicate.endswith("resolves_to")})
         if not ips:
             return False, f"{analyzer_id}: no IP observations to analyze"
         ok_any, errs = False, []
         for ip in ips[:8]:  # bounded fan-out per wave
-            ti = _ti(task, "ipv4", ip, capture)
+            ti = _ti(task, "ip", ip, capture)
             res = analyzer.execute(ti)
             if res.ok:
                 ok_any = True
                 _ingest_result(res, ctx)
+                _attach_evidence(ctx, capture, res.evidence_ids)
             else:
                 errs.extend(res.errors)
         return (True, "") if ok_any else (False, "; ".join(errs) or "analysis failed")
@@ -141,16 +169,44 @@ def make_gate_runner(required_predicates: tuple[str, ...]):
 
 
 def build_infrastructure_runners(capture, targets: list[dict]) -> dict:
-    """Runner table matching planner template kinds."""
-    dns = make_collect_runner("dns.resolve", "domain", capture)
-    rdap = make_collect_runner("rdap.domain", "domain", capture)
-    ct = make_collect_runner("certificates.ct", "domain", capture)
+    """Runner table matching planner template kinds.
+
+    Transform ids here MUST exist in traceatlas.transforms.registry.
+    default_registry(); _get_transform raises MissingTransformError at
+    dispatch time otherwise (tested in tests/unit/test_runners.py).
+    """
+    dns = make_collect_runner("transform.domain_to_dns", "domain", capture)
+    rdap = make_collect_runner("transform.domain_to_rdap", "domain", capture)
+    ct = make_collect_runner("transform.domain_to_certificate", "domain", capture)
     return {
         "collect.dns": dns,
         "collect.rdap": rdap,
         "collect.certificates": ct,
-        "analyze.ip_geo": make_analyze_runner("ip.geo", capture),
-        "analyze.asn": make_analyze_runner("ip.asn", capture),
+        # IP enrichment: one call to the ipinfo-compatible connector yields
+        # ASN + hosting org + coarse location; both analyze kinds share it so
+        # no duplicate provider hit is made per wave.
+        "analyze.ip_geo": make_analyze_runner("transform.ip_to_asn", capture),
+        "analyze.asn": _cached_analyze_runner(
+            make_analyze_runner("transform.ip_to_asn", capture)),
         "verify.claim": make_gate_runner(("domain.resolves_to",)),
         "report.build": make_gate_runner(("domain.resolves_to",)),
     }
+
+
+def _cached_analyze_runner(inner):
+    """Memoize an analyze runner by (sorted-ip-set) so the same IPs are not
+    re-queried by a second analyze kind within one investigation."""
+    seen: frozenset | None = None
+
+    def runner(task, ctx):
+        nonlocal seen
+        ips = frozenset(o.obj for o in ctx.observations
+                        if o.predicate.endswith("resolves_to"))
+        if seen is not None and ips <= seen:
+            return True, "already analyzed"
+        ok, msg = inner(task, ctx)
+        if ok:
+            seen = seen | ips if seen is not None else ips
+        return ok, msg
+
+    return runner

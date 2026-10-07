@@ -20,6 +20,7 @@ from traceatlas.core.information_gap import InformationGap
 from traceatlas.core.objective import Objective
 from traceatlas.core.objective_spec import ObjectiveSpec
 from traceatlas.evidence.capture import EvidenceCapture, ReplayManifest
+from traceatlas.evidence.store import EvidenceStore
 from traceatlas.graph.builder import build_graph
 from traceatlas.investigation.audit import AuditTrail
 from traceatlas.investigation.checkpoints import CheckpointStore
@@ -66,9 +67,7 @@ class InvestigationManager:
     def __init__(self, evidence_root: Path | str = ".traceatlas-evidence",
                  budget_units: float = 100.0, max_parallel: int = 4,
                  allow_live: bool = True) -> None:
-        self.capture = EvidenceCapture(root=evidence_root) \
-            if "root" in EvidenceCapture.__init__.__code__.co_varnames \
-            else EvidenceCapture(store=None)
+        self.capture = EvidenceCapture(store=EvidenceStore(root=evidence_root))
         self.budget_units = budget_units
         self.max_parallel = max_parallel
         self.allow_live = allow_live
@@ -93,8 +92,11 @@ class InvestigationManager:
         if not targets:
             outcome = self._empty_outcome(case, objective, spec)
             outcome.gaps.append(InformationGap(
-                case_id=case.id, description="No target identified in objective text.",
-                blocking=True))
+                case_id=case.id,
+                question="No target identified in objective text — which "
+                         "domain/IP/company/person should be investigated?",
+                blocking_required_answer=True,
+                candidate_actions=["ask_human"]))
             outcome.status = InvestigationStatus.NEEDS_HUMAN
             return outcome
 
@@ -131,9 +133,6 @@ class InvestigationManager:
         report_html = render_report(case, objective, spec, ctx, graph, claims,
                                     contradictions, gaps, independence, eres)
 
-        manifest = ReplayManifest()
-        for rec in ctx.evidence.values():
-            pass  # manifest entries are added by capture tasks via ctx below
         manifest_json = _build_manifest(self.capture, ctx)
 
         outcome = InvestigationOutcome(
