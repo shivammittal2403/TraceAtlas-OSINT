@@ -23,6 +23,7 @@ from traceatlas.ai_workforce.result import EmployeeResult, ManagerResult, Result
 from traceatlas.ai_workforce.supervision import ComplianceSupervisor, QualitySupervisor
 from traceatlas.ai_workforce.task import Task
 from traceatlas.trust.case_memory import CaseMemory
+from traceatlas.trust.fact_gate.bias_check import ensure_bias_assessments
 from traceatlas.trust.fact_gate.candidate import FactCandidate
 from traceatlas.trust.fact_gate.gate import FactGate
 from traceatlas.trust.hypotheses import HypothesisEngine
@@ -121,6 +122,23 @@ class ChiefIntelligenceManager:
         for ent in res.entities:
             self.memory.upsert_entity(ent.kind, ent.value)
         for cf in res.candidate_facts:
+            # Bias/reliability analysis runs BEFORE the gate so the mandatory
+            # §10 bias-coverage check has real assessments to consult; missing
+            # coverage then correctly demotes candidates instead of silently
+            # passing them.
+            pre = FactCandidate(
+                statement=cf.statement, case_id=self.memory.case_id,
+                observation_ids=list(cf.observation_ids),
+                evidence_ids=list(cf.evidence_ids),
+                source_ids=list(cf.source_ids),
+                entity_ids=list(cf.entity_ids))
+            ensure_bias_assessments(pre, self.memory, self.bias_analyzer)
+            for sid in list(cf.source_ids):
+                src = self.memory.sources.get(sid)
+                if src is not None and not any(
+                        r.source_id == sid
+                        for r in self.memory.reliability_assessments.values()):
+                    self.memory.add_assessment(self.rel_analyzer.assess(src))
             cand = FactCandidate(
                 statement=cf.statement, case_id=self.memory.case_id,
                 observation_ids=list(cf.observation_ids),
