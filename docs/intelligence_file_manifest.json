@@ -1,0 +1,648 @@
+{
+  "generated_by": "scripts/generate_intelligence_scaffold.py",
+  "status": "SCAFFOLD \u2014 files created, none implemented",
+  "implementation_rule": "CREATED != IMPLEMENTED. Each module requires domain logic, tests, source readiness, evidence rules and acceptance validation.",
+  "core": [
+    "traceatlas/intelligence/__init__.py",
+    "traceatlas/intelligence/registry.py",
+    "traceatlas/intelligence/router.py",
+    "traceatlas/intelligence/planner.py",
+    "traceatlas/intelligence/sequence.py",
+    "traceatlas/intelligence/permissions.py",
+    "traceatlas/intelligence/source_readiness.py",
+    "traceatlas/intelligence/fact_gate.py",
+    "traceatlas/intelligence/hypothesis_gate.py",
+    "traceatlas/intelligence/graph_bridge.py",
+    "traceatlas/intelligence/memory_bridge.py",
+    "traceatlas/intelligence/reporting.py",
+    "traceatlas/intelligence/playbooks.py",
+    "traceatlas/intelligence/manager_tree.py",
+    "traceatlas/intelligence/skills.py",
+    "traceatlas/intelligence/next_action.py",
+    "traceatlas/intelligence/modules/darkweb/limitations.py",
+    "traceatlas/intelligence/modules/darkweb/report.py"
+  ],
+  "api_routes": [
+    "traceatlas/api/routes/intelligence.py",
+    "traceatlas/api/routes/intelligence_modules.py",
+    "traceatlas/api/routes/intelligence_runs.py",
+    "traceatlas/api/routes/intelligence_sequences.py",
+    "traceatlas/api/routes/intelligence_playbooks.py",
+    "traceatlas/api/routes/intelligence_reviews.py"
+  ],
+  "web": [
+    "web/app/intelligence/page.tsx",
+    "web/app/intelligence/[module]/page.tsx",
+    "web/app/investigations/[id]/intelligence/page.tsx",
+    "web/components/intelligence/IntelligenceModuleGrid.tsx",
+    "web/components/intelligence/IntelligenceModuleCard.tsx",
+    "web/components/intelligence/IntelligenceRunPanel.tsx",
+    "web/components/intelligence/SequenceQueue.tsx",
+    "web/components/intelligence/SourceReadiness.tsx",
+    "web/components/intelligence/EvidenceReview.tsx",
+    "web/components/intelligence/ModuleResult.tsx",
+    "web/components/intelligence/ModuleStatus.tsx",
+    "web/components/intelligence/ManagerTree.tsx",
+    "web/components/intelligence/SkillBadges.tsx",
+    "web/components/intelligence/NextActionPanel.tsx"
+  ],
+  "docs": [
+    "docs/INTELLIGENCE_ACCEPTANCE_GATES.md",
+    "docs/INTELLIGENCE_FILE_MAP.md",
+    "docs/INTELLIGENCE_HIERARCHY.md",
+    "docs/INTELLIGENCE_MODULES.md",
+    "docs/INTELLIGENCE_PLAYBOOKS.md",
+    "docs/INTELLIGENCE_SOURCE_BOUNDARIES.md"
+  ],
+  "modules": [
+    {
+      "family": "company",
+      "name": "company",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/company.py",
+      "test": "tests/intelligence/modules/test_company.py",
+      "purpose": "Company registry lookup and verification"
+    },
+    {
+      "family": "company",
+      "name": "ownership",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/ownership.py",
+      "test": "tests/intelligence/modules/test_ownership.py",
+      "purpose": "Beneficial-ownership chain analysis"
+    },
+    {
+      "family": "company",
+      "name": "procurement",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/procurement.py",
+      "test": "tests/intelligence/modules/test_procurement.py",
+      "purpose": "Procurement and tender record analysis"
+    },
+    {
+      "family": "company",
+      "name": "trade",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/trade.py",
+      "test": "tests/intelligence/modules/test_trade.py",
+      "purpose": "Trade-flow and customs record analysis"
+    },
+    {
+      "family": "company",
+      "name": "address",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/address.py",
+      "test": "tests/intelligence/modules/test_address.py",
+      "purpose": "Registered-address correlation"
+    },
+    {
+      "family": "company",
+      "name": "legal",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/legal.py",
+      "test": "tests/intelligence/modules/test_legal.py",
+      "purpose": "Court and legal-record review"
+    },
+    {
+      "family": "company",
+      "name": "sanctions",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/sanctions.py",
+      "test": "tests/intelligence/modules/test_sanctions.py",
+      "purpose": "Sanctions and watchlist screening"
+    },
+    {
+      "family": "company",
+      "name": "finance",
+      "package": "traceatlas/intelligence/modules/company",
+      "implementation": "traceatlas/intelligence/modules/company/finance.py",
+      "test": "tests/intelligence/modules/test_finance.py",
+      "purpose": "Documented financial-statement analysis"
+    },
+    {
+      "family": "cyber",
+      "name": "ioc",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/ioc.py",
+      "test": "tests/intelligence/modules/test_ioc.py",
+      "purpose": "Indicator-of-compromise collection and triage"
+    },
+    {
+      "family": "cyber",
+      "name": "vulnerability",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/vulnerability.py",
+      "test": "tests/intelligence/modules/test_vulnerability.py",
+      "purpose": "Vulnerability advisory correlation"
+    },
+    {
+      "family": "cyber",
+      "name": "threat_actor",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/threat_actor.py",
+      "test": "tests/intelligence/modules/test_threat_actor.py",
+      "purpose": "Threat-actor profile assessment"
+    },
+    {
+      "family": "cyber",
+      "name": "campaign",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/campaign.py",
+      "test": "tests/intelligence/modules/test_campaign.py",
+      "purpose": "Campaign attribution evidence review"
+    },
+    {
+      "family": "cyber",
+      "name": "malware",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/malware.py",
+      "test": "tests/intelligence/modules/test_malware.py",
+      "purpose": "Malware sample and family analysis"
+    },
+    {
+      "family": "cyber",
+      "name": "package",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/package.py",
+      "test": "tests/intelligence/modules/test_package.py",
+      "purpose": "Package-registry (typosquat) analysis"
+    },
+    {
+      "family": "cyber",
+      "name": "repository",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/repository.py",
+      "test": "tests/intelligence/modules/test_repository.py",
+      "purpose": "Source-repository provenance analysis"
+    },
+    {
+      "family": "cyber",
+      "name": "supply_chain",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/supply_chain.py",
+      "test": "tests/intelligence/modules/test_supply_chain.py",
+      "purpose": "Supply-chain dependency risk review"
+    },
+    {
+      "family": "cyber",
+      "name": "incident",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/incident.py",
+      "test": "tests/intelligence/modules/test_incident.py",
+      "purpose": "Incident record reconstruction"
+    },
+    {
+      "family": "cyber",
+      "name": "log",
+      "package": "traceatlas/intelligence/modules/cyber",
+      "implementation": "traceatlas/intelligence/modules/cyber/log.py",
+      "test": "tests/intelligence/modules/test_log.py",
+      "purpose": "Authorized log evidence processing"
+    },
+    {
+      "family": "web",
+      "name": "web",
+      "package": "traceatlas/intelligence/modules/web",
+      "implementation": "traceatlas/intelligence/modules/web/web.py",
+      "test": "tests/intelligence/modules/test_web.py",
+      "purpose": "Public website observation processing"
+    },
+    {
+      "family": "web",
+      "name": "search",
+      "package": "traceatlas/intelligence/modules/web",
+      "implementation": "traceatlas/intelligence/modules/web/search.py",
+      "test": "tests/intelligence/modules/test_search.py",
+      "purpose": "Permitted search-engine collection"
+    },
+    {
+      "family": "web",
+      "name": "dork",
+      "package": "traceatlas/intelligence/modules/web",
+      "implementation": "traceatlas/intelligence/modules/web/dork.py",
+      "test": "tests/intelligence/modules/test_dork.py",
+      "purpose": "Structured search-operator query construction"
+    },
+    {
+      "family": "osint",
+      "name": "username",
+      "package": "traceatlas/intelligence/modules/osint",
+      "implementation": "traceatlas/intelligence/modules/osint/username.py",
+      "test": "tests/intelligence/modules/test_username.py",
+      "purpose": "Cross-platform username availability checks"
+    },
+    {
+      "family": "osint",
+      "name": "archive",
+      "package": "traceatlas/intelligence/modules/osint",
+      "implementation": "traceatlas/intelligence/modules/osint/archive.py",
+      "test": "tests/intelligence/modules/test_archive.py",
+      "purpose": "Web-archive historical snapshot review"
+    },
+    {
+      "family": "osint",
+      "name": "news",
+      "package": "traceatlas/intelligence/modules/osint",
+      "implementation": "traceatlas/intelligence/modules/osint/news.py",
+      "test": "tests/intelligence/modules/test_news.py",
+      "purpose": "News-feed and article monitoring"
+    },
+    {
+      "family": "osint",
+      "name": "academic",
+      "package": "traceatlas/intelligence/modules/osint",
+      "implementation": "traceatlas/intelligence/modules/osint/academic.py",
+      "test": "tests/intelligence/modules/test_academic.py",
+      "purpose": "Academic publication and author records"
+    },
+    {
+      "family": "osint",
+      "name": "dataset",
+      "package": "traceatlas/intelligence/modules/osint",
+      "implementation": "traceatlas/intelligence/modules/osint/dataset.py",
+      "test": "tests/intelligence/modules/test_dataset.py",
+      "purpose": "Open-dataset discovery and licensing review"
+    },
+    {
+      "family": "geo",
+      "name": "geo",
+      "package": "traceatlas/intelligence/modules/geo",
+      "implementation": "traceatlas/intelligence/modules/geo/geo.py",
+      "test": "tests/intelligence/modules/test_geo.py",
+      "purpose": "Geospatial context resolution"
+    },
+    {
+      "family": "geo",
+      "name": "map",
+      "package": "traceatlas/intelligence/modules/geo",
+      "implementation": "traceatlas/intelligence/modules/geo/map.py",
+      "test": "tests/intelligence/modules/test_map.py",
+      "purpose": "Map-provider observation processing"
+    },
+    {
+      "family": "geo",
+      "name": "satellite",
+      "package": "traceatlas/intelligence/modules/geo",
+      "implementation": "traceatlas/intelligence/modules/geo/satellite.py",
+      "test": "tests/intelligence/modules/test_satellite.py",
+      "purpose": "Satellite-imagery review"
+    },
+    {
+      "family": "geo",
+      "name": "transport",
+      "package": "traceatlas/intelligence/modules/geo",
+      "implementation": "traceatlas/intelligence/modules/geo/transport.py",
+      "test": "tests/intelligence/modules/test_transport.py",
+      "purpose": "Transport-route and tracking evidence"
+    },
+    {
+      "family": "geo",
+      "name": "event",
+      "package": "traceatlas/intelligence/modules/geo",
+      "implementation": "traceatlas/intelligence/modules/geo/event.py",
+      "test": "tests/intelligence/modules/test_event.py",
+      "purpose": "Observed-event timeline correlation"
+    },
+    {
+      "family": "person",
+      "name": "email",
+      "package": "traceatlas/intelligence/modules/person",
+      "implementation": "traceatlas/intelligence/modules/person/email.py",
+      "test": "tests/intelligence/modules/test_email.py",
+      "purpose": "Email identifier analysis (authorized scope)"
+    },
+    {
+      "family": "person",
+      "name": "phone",
+      "package": "traceatlas/intelligence/modules/person",
+      "implementation": "traceatlas/intelligence/modules/person/phone.py",
+      "test": "tests/intelligence/modules/test_phone.py",
+      "purpose": "Phone-number identifier analysis"
+    },
+    {
+      "family": "person",
+      "name": "social",
+      "package": "traceatlas/intelligence/modules/person",
+      "implementation": "traceatlas/intelligence/modules/person/social.py",
+      "test": "tests/intelligence/modules/test_social.py",
+      "purpose": "Public social-profile evidence review"
+    },
+    {
+      "family": "person",
+      "name": "messenger",
+      "package": "traceatlas/intelligence/modules/person",
+      "implementation": "traceatlas/intelligence/modules/person/messenger.py",
+      "test": "tests/intelligence/modules/test_messenger.py",
+      "purpose": "Authorized messenger record analysis"
+    },
+    {
+      "family": "person",
+      "name": "interview",
+      "package": "traceatlas/intelligence/modules/person",
+      "implementation": "traceatlas/intelligence/modules/person/interview.py",
+      "test": "tests/intelligence/modules/test_interview.py",
+      "purpose": "Interview/testimony record handling"
+    },
+    {
+      "family": "infra",
+      "name": "domain",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/domain.py",
+      "test": "tests/intelligence/modules/test_domain.py",
+      "purpose": "Domain registration (RDAP) analysis"
+    },
+    {
+      "family": "infra",
+      "name": "dns",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/dns.py",
+      "test": "tests/intelligence/modules/test_dns.py",
+      "purpose": "Scoped DNS record collection"
+    },
+    {
+      "family": "infra",
+      "name": "certificate",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/certificate.py",
+      "test": "tests/intelligence/modules/test_certificate.py",
+      "purpose": "Certificate-transparency observation"
+    },
+    {
+      "family": "infra",
+      "name": "ip",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/ip.py",
+      "test": "tests/intelligence/modules/test_ip.py",
+      "purpose": "IP address allocation and geolocation context"
+    },
+    {
+      "family": "infra",
+      "name": "asn",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/asn.py",
+      "test": "tests/intelligence/modules/test_asn.py",
+      "purpose": "Autonomous-system relationship analysis"
+    },
+    {
+      "family": "infra",
+      "name": "bgp",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/bgp.py",
+      "test": "tests/intelligence/modules/test_bgp.py",
+      "purpose": "BGP routing observation review"
+    },
+    {
+      "family": "infra",
+      "name": "network",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/network.py",
+      "test": "tests/intelligence/modules/test_network.py",
+      "purpose": "Network-range context assembly"
+    },
+    {
+      "family": "infra",
+      "name": "cloud",
+      "package": "traceatlas/intelligence/modules/infra",
+      "implementation": "traceatlas/intelligence/modules/infra/cloud.py",
+      "test": "tests/intelligence/modules/test_cloud.py",
+      "purpose": "Cloud-hosting fingerprint analysis"
+    },
+    {
+      "family": "media",
+      "name": "document",
+      "package": "traceatlas/intelligence/modules/media",
+      "implementation": "traceatlas/intelligence/modules/media/document.py",
+      "test": "tests/intelligence/modules/test_document.py",
+      "purpose": "Document parsing and extraction routing"
+    },
+    {
+      "family": "media",
+      "name": "metadata",
+      "package": "traceatlas/intelligence/modules/media",
+      "implementation": "traceatlas/intelligence/modules/media/metadata.py",
+      "test": "tests/intelligence/modules/test_metadata.py",
+      "purpose": "File-metadata provenance review"
+    },
+    {
+      "family": "media",
+      "name": "image",
+      "package": "traceatlas/intelligence/modules/media",
+      "implementation": "traceatlas/intelligence/modules/media/image.py",
+      "test": "tests/intelligence/modules/test_image.py",
+      "purpose": "Image similarity and EXIF analysis"
+    },
+    {
+      "family": "media",
+      "name": "video",
+      "package": "traceatlas/intelligence/modules/media",
+      "implementation": "traceatlas/intelligence/modules/media/video.py",
+      "test": "tests/intelligence/modules/test_video.py",
+      "purpose": "Video frame and content review"
+    },
+    {
+      "family": "media",
+      "name": "audio",
+      "package": "traceatlas/intelligence/modules/media",
+      "implementation": "traceatlas/intelligence/modules/media/audio.py",
+      "test": "tests/intelligence/modules/test_audio.py",
+      "purpose": "Audio transcription handling"
+    },
+    {
+      "family": "media",
+      "name": "disinformation",
+      "package": "traceatlas/intelligence/modules/media",
+      "implementation": "traceatlas/intelligence/modules/media/disinformation.py",
+      "test": "tests/intelligence/modules/test_disinformation.py",
+      "purpose": "Disinformation pattern assessment"
+    },
+    {
+      "family": "device",
+      "name": "app",
+      "package": "traceatlas/intelligence/modules/device",
+      "implementation": "traceatlas/intelligence/modules/device/app.py",
+      "test": "tests/intelligence/modules/test_app.py",
+      "purpose": "Application store listing analysis"
+    },
+    {
+      "family": "device",
+      "name": "mobile",
+      "package": "traceatlas/intelligence/modules/device",
+      "implementation": "traceatlas/intelligence/modules/device/mobile.py",
+      "test": "tests/intelligence/modules/test_mobile.py",
+      "purpose": "Authorized device record processing"
+    },
+    {
+      "family": "device",
+      "name": "iot",
+      "package": "traceatlas/intelligence/modules/device",
+      "implementation": "traceatlas/intelligence/modules/device/iot.py",
+      "test": "tests/intelligence/modules/test_iot.py",
+      "purpose": "IoT exposure observation review"
+    },
+    {
+      "family": "device",
+      "name": "ot",
+      "package": "traceatlas/intelligence/modules/device",
+      "implementation": "traceatlas/intelligence/modules/device/ot.py",
+      "test": "tests/intelligence/modules/test_ot.py",
+      "purpose": "OT/ICS environment context"
+    },
+    {
+      "family": "fraud",
+      "name": "fraud",
+      "package": "traceatlas/intelligence/modules/fraud",
+      "implementation": "traceatlas/intelligence/modules/fraud/fraud.py",
+      "test": "tests/intelligence/modules/test_fraud.py",
+      "purpose": "Fraud-scheme pattern analysis"
+    },
+    {
+      "family": "fraud",
+      "name": "payment",
+      "package": "traceatlas/intelligence/modules/fraud",
+      "implementation": "traceatlas/intelligence/modules/fraud/payment.py",
+      "test": "tests/intelligence/modules/test_payment.py",
+      "purpose": "Payment-rail transaction evidence review"
+    },
+    {
+      "family": "fraud",
+      "name": "crypto",
+      "package": "traceatlas/intelligence/modules/fraud",
+      "implementation": "traceatlas/intelligence/modules/fraud/crypto.py",
+      "test": "tests/intelligence/modules/test_crypto.py",
+      "purpose": "Cryptocurrency ledger tracing support"
+    },
+    {
+      "family": "brand",
+      "name": "brand",
+      "package": "traceatlas/intelligence/modules/brand",
+      "implementation": "traceatlas/intelligence/modules/brand/brand.py",
+      "test": "tests/intelligence/modules/test_brand.py",
+      "purpose": "Brand-impersonation evidence analysis"
+    },
+    {
+      "family": "brand",
+      "name": "ad",
+      "package": "traceatlas/intelligence/modules/brand",
+      "implementation": "traceatlas/intelligence/modules/brand/ad.py",
+      "test": "tests/intelligence/modules/test_ad.py",
+      "purpose": "Advertising-placement evidence review"
+    },
+    {
+      "family": "brand",
+      "name": "marketplace",
+      "package": "traceatlas/intelligence/modules/brand",
+      "implementation": "traceatlas/intelligence/modules/brand/marketplace.py",
+      "test": "tests/intelligence/modules/test_marketplace.py",
+      "purpose": "Marketplace listing evidence analysis"
+    },
+    {
+      "family": "brand",
+      "name": "job",
+      "package": "traceatlas/intelligence/modules/brand",
+      "implementation": "traceatlas/intelligence/modules/brand/job.py",
+      "test": "tests/intelligence/modules/test_job.py",
+      "purpose": "Job-posting legitimacy review"
+    },
+    {
+      "family": "brand",
+      "name": "complaint",
+      "package": "traceatlas/intelligence/modules/brand",
+      "implementation": "traceatlas/intelligence/modules/brand/complaint.py",
+      "test": "tests/intelligence/modules/test_complaint.py",
+      "purpose": "Complaint-record aggregation"
+    },
+    {
+      "family": "brand",
+      "name": "exposure",
+      "package": "traceatlas/intelligence/modules/brand",
+      "implementation": "traceatlas/intelligence/modules/brand/exposure.py",
+      "test": "tests/intelligence/modules/test_exposure.py",
+      "purpose": "Credential/exposure record handling"
+    },
+    {
+      "family": "darkweb",
+      "name": "darkweb",
+      "package": "traceatlas/intelligence/modules/darkweb",
+      "implementation": "traceatlas/intelligence/modules/darkweb/darkweb.py",
+      "test": "tests/intelligence/modules/test_darkweb.py",
+      "purpose": "Licensed dark-web provider evidence handling"
+    }
+  ],
+  "tests": [
+    "tests/intelligence/test_registry.py",
+    "tests/intelligence/test_router.py",
+    "tests/intelligence/test_planner.py",
+    "tests/intelligence/test_sequence.py",
+    "tests/intelligence/test_permissions.py",
+    "tests/intelligence/test_source_readiness.py",
+    "tests/intelligence/test_fact_gate.py",
+    "tests/intelligence/test_hypothesis_gate.py",
+    "tests/intelligence/test_graph_bridge.py",
+    "tests/intelligence/test_memory_bridge.py",
+    "tests/intelligence/test_reporting.py",
+    "tests/intelligence/modules/test_company.py",
+    "tests/intelligence/modules/test_ownership.py",
+    "tests/intelligence/modules/test_procurement.py",
+    "tests/intelligence/modules/test_trade.py",
+    "tests/intelligence/modules/test_address.py",
+    "tests/intelligence/modules/test_legal.py",
+    "tests/intelligence/modules/test_sanctions.py",
+    "tests/intelligence/modules/test_finance.py",
+    "tests/intelligence/modules/test_ioc.py",
+    "tests/intelligence/modules/test_vulnerability.py",
+    "tests/intelligence/modules/test_threat_actor.py",
+    "tests/intelligence/modules/test_campaign.py",
+    "tests/intelligence/modules/test_malware.py",
+    "tests/intelligence/modules/test_package.py",
+    "tests/intelligence/modules/test_repository.py",
+    "tests/intelligence/modules/test_supply_chain.py",
+    "tests/intelligence/modules/test_incident.py",
+    "tests/intelligence/modules/test_log.py",
+    "tests/intelligence/modules/test_web.py",
+    "tests/intelligence/modules/test_search.py",
+    "tests/intelligence/modules/test_dork.py",
+    "tests/intelligence/modules/test_username.py",
+    "tests/intelligence/modules/test_archive.py",
+    "tests/intelligence/modules/test_news.py",
+    "tests/intelligence/modules/test_academic.py",
+    "tests/intelligence/modules/test_dataset.py",
+    "tests/intelligence/modules/test_geo.py",
+    "tests/intelligence/modules/test_map.py",
+    "tests/intelligence/modules/test_satellite.py",
+    "tests/intelligence/modules/test_transport.py",
+    "tests/intelligence/modules/test_event.py",
+    "tests/intelligence/modules/test_email.py",
+    "tests/intelligence/modules/test_phone.py",
+    "tests/intelligence/modules/test_social.py",
+    "tests/intelligence/modules/test_messenger.py",
+    "tests/intelligence/modules/test_interview.py",
+    "tests/intelligence/modules/test_domain.py",
+    "tests/intelligence/modules/test_dns.py",
+    "tests/intelligence/modules/test_certificate.py",
+    "tests/intelligence/modules/test_ip.py",
+    "tests/intelligence/modules/test_asn.py",
+    "tests/intelligence/modules/test_bgp.py",
+    "tests/intelligence/modules/test_network.py",
+    "tests/intelligence/modules/test_cloud.py",
+    "tests/intelligence/modules/test_document.py",
+    "tests/intelligence/modules/test_metadata.py",
+    "tests/intelligence/modules/test_image.py",
+    "tests/intelligence/modules/test_video.py",
+    "tests/intelligence/modules/test_audio.py",
+    "tests/intelligence/modules/test_disinformation.py",
+    "tests/intelligence/modules/test_app.py",
+    "tests/intelligence/modules/test_mobile.py",
+    "tests/intelligence/modules/test_iot.py",
+    "tests/intelligence/modules/test_ot.py",
+    "tests/intelligence/modules/test_fraud.py",
+    "tests/intelligence/modules/test_payment.py",
+    "tests/intelligence/modules/test_crypto.py",
+    "tests/intelligence/modules/test_brand.py",
+    "tests/intelligence/modules/test_ad.py",
+    "tests/intelligence/modules/test_marketplace.py",
+    "tests/intelligence/modules/test_job.py",
+    "tests/intelligence/modules/test_complaint.py",
+    "tests/intelligence/modules/test_exposure.py",
+    "tests/intelligence/modules/test_darkweb.py"
+  ]
+}

@@ -1,6 +1,22 @@
-# Compiled Python files
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# TraceAtlas checkpoints
-.traceatlas-checkpoints/
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
