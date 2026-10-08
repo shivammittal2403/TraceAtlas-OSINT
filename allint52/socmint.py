@@ -1,5 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+
+if __package__:
+    from . import _support
+else:
+    import _support
 import json
 import re
 from datetime import datetime, timezone
@@ -487,8 +492,8 @@ class TraceAtlasSOCMINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "SOCMINT Manager",
-                    "authorization_basis": "customer-authorized public/authorized SOCMINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "public profile search",
                         "public post search",
@@ -585,7 +590,7 @@ class TraceAtlasSOCMINTPanel(tk.Tk):
         if not payload.get("platforms"):
             warnings.append("No preferred platforms provided. Platform selection will be inferred from target type.")
 
-        if not payload.get("authorization"):
+        if not _support.has_authorization(payload.get("authorization")):
             warnings.append("No authorization basis provided. Treat as policy-limited planning only.")
 
         if not payload.get("scope"):
@@ -933,7 +938,7 @@ class TraceAtlasSOCMINTPanel(tk.Tk):
                     "purpose": "preserve reproducibility and avoid excessive query generation",
                     "priority": 0,
                     "expected_information_value": "CONTROL",
-                    "authorization_status": "ALLOWED",
+                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                     "estimated_cost": "ZERO",
                     "estimated_latency": "ZERO",
                     "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
@@ -963,7 +968,7 @@ class TraceAtlasSOCMINTPanel(tk.Tk):
                                 "purpose": self._purpose_for_search_type(search_type),
                                 "priority": priority,
                                 "expected_information_value": self._expected_information_value(search_type, identifier.get("type", "")),
-                                "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                                "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                                 "estimated_cost": self._estimated_cost(platform, search_type),
                                 "estimated_latency": self._estimated_latency(platform),
                                 "policy_risk": "LOW_IF_PASSIVE_PUBLIC",
@@ -985,7 +990,7 @@ class TraceAtlasSOCMINTPanel(tk.Tk):
                                     "purpose": "prevent unbounded planning output",
                                     "priority": priority,
                                     "expected_information_value": "CONTROL",
-                                    "authorization_status": "ALLOWED",
+                                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                                     "estimated_cost": "ZERO",
                                     "estimated_latency": "ZERO",
                                     "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
@@ -1891,26 +1896,7 @@ class TraceAtlasSOCMINTPanel(tk.Tk):
         }
 
     def export_json(self) -> None:
-        if not self.last_result:
-            self.generate_plan()
-
-        data = self.last_result or self.collect_payload()
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{data.get('payload', {}).get('case_id', 'socmint')}_{data.get('payload', {}).get('task_id', 'task')}.json",
-        )
-
-        if not path:
-            return
-
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Export Complete", f"SOCMINT JSON saved to:\n{path}")
-        except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+        _support.export_snapshot(self, filedialog, messagebox)
 
     def copy_output(self) -> None:
         text = self.output.get("1.0", "end-1c").strip()

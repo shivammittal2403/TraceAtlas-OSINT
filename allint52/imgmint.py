@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+if __package__:
+    from . import _support
+else:
+    import _support
+
 import json
 import re
 import hashlib
@@ -406,6 +411,13 @@ def analyze_image_file(path_str: str) -> Dict[str, Any]:
         return result
 
     try:
+        path = _support.media_path(path)
+    except (OSError, ValueError) as exc:
+        result["status"] = "BLOCKED_FILE_LIMIT"
+        result["error"] = str(exc)
+        return result
+
+    try:
         result["size_bytes"] = path.stat().st_size
     except Exception as exc:
         result["status"] = "FAILED_STAT"
@@ -426,6 +438,9 @@ def analyze_image_file(path_str: str) -> Dict[str, Any]:
 
     try:
         with Image.open(path) as img:
+            if img.width * img.height > _support.MAX_IMAGE_PIXELS:
+                result["status"] = "BLOCKED_PIXEL_LIMIT"
+                return result
             img.load()
             result["pil_format"] = img.format
             result["width"] = img.width
@@ -744,8 +759,8 @@ class TraceAtlasIMINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "IMINT Manager / Media Intelligence Manager",
-                    "authorization_basis": "customer-authorized public/authorized IMINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "local image hashing",
                         "authorized metadata extraction",
@@ -844,10 +859,10 @@ class TraceAtlasIMINTPanel(tk.Tk):
         if not payload.get("image_paths") and not payload.get("image_sources"):
             warnings.append("No local image paths or image sources provided. Output remains planning-only.")
 
-        if not payload.get("configured_models"):
+        if not _support.has_configuration(payload.get("configured_models")):
             warnings.append("No vision/OCR/embedding models configured. Semantic image analysis remains planning-only.")
 
-        if not payload.get("configured_connectors"):
+        if not _support.has_configuration(payload.get("configured_connectors")):
             warnings.append("No reverse-image/archive/GEOINT connectors configured. External provenance checks remain planning-only.")
 
         if not PIL_AVAILABLE:
@@ -1025,6 +1040,7 @@ class TraceAtlasIMINTPanel(tk.Tk):
             analyzed.append(analyze_image_file(p))
 
         self.analyzed_images = analyzed
+        self._analysis_payload = payload
 
         observations = self._build_observations_from_analyzed_images(analyzed)
         candidate_facts = self._build_candidate_facts_from_analyzed_images(analyzed)
@@ -1067,6 +1083,7 @@ class TraceAtlasIMINTPanel(tk.Tk):
 
     def generate_plan(self) -> None:
         payload = self.collect_payload()
+        _support.invalidate_analysis(self, payload)
         warnings = self.validate_payload(payload)
         policy = self.policy_screen(payload)
 
@@ -1507,7 +1524,7 @@ class TraceAtlasIMINTPanel(tk.Tk):
                     "priority": priority,
                     "privacy_risk": privacy_risk,
                     "policy_note": policy_note,
-                    "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                     "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                 }
             )
@@ -1657,7 +1674,7 @@ class TraceAtlasIMINTPanel(tk.Tk):
                 "expected_output": "Image inventory with evidence objects.",
             }
 
-        if not payload.get("configured_models"):
+        if not _support.has_configuration(payload.get("configured_models")):
             return {
                 "action": "Configure approved OCR/vision/embedding models if semantic image analysis is required.",
                 "reason": "Local deterministic analysis cannot establish scene content, objects, or OCR text.",
@@ -3298,30 +3315,7 @@ class TraceAtlasIMINTPanel(tk.Tk):
         }
 
     def export_json(self) -> None:
-        if not self.last_result:
-            self.generate_plan()
-
-        data = self.last_result or self.collect_payload()
-
-        payload_for_name = data.get("payload", data)
-        case_id = payload_for_name.get("case_id", "imint")
-        task_id = payload_for_name.get("task_id", "task")
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{case_id}_{task_id}.json",
-        )
-
-        if not path:
-            return
-
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Export Complete", f"IMINT JSON saved to:\n{path}")
-        except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+        _support.export_snapshot(self, filedialog, messagebox)
 
     def copy_output(self) -> None:
         text = self.output.get("1.0", "end-1c").strip()

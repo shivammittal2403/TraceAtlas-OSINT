@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+if __package__:
+    from . import _support
+else:
+    import _support
+
 import json
 import re
 import hashlib
@@ -408,6 +413,10 @@ def summarize_ffprobe(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def ffprobe_video(path_str: str) -> Dict[str, Any]:
+    try:
+        path_str = str(_support.media_path(path_str))
+    except (OSError, ValueError) as exc:
+        return {"status": "BLOCKED_FILE_LIMIT", "reason": str(exc)}
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return {
@@ -417,6 +426,7 @@ def ffprobe_video(path_str: str) -> Dict[str, Any]:
 
     cmd = [
         ffprobe,
+        "-protocol_whitelist", "file",
         "-v",
         "quiet",
         "-print_format",
@@ -427,7 +437,7 @@ def ffprobe_video(path_str: str) -> Dict[str, Any]:
     ]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        proc = _support.run_decoder(cmd, timeout=30)
     except subprocess.TimeoutExpired:
         return {"status": "FAILED_TIMEOUT", "reason": "ffprobe timed out."}
     except Exception as exc:
@@ -545,6 +555,13 @@ def analyze_video_file(path_str: str) -> Dict[str, Any]:
         return result
 
     try:
+        path = _support.media_path(path)
+    except (OSError, ValueError) as exc:
+        result["status"] = "BLOCKED_FILE_LIMIT"
+        result["error"] = str(exc)
+        return result
+
+    try:
         result["size_bytes"] = path.stat().st_size
     except Exception as exc:
         result["status"] = "FAILED_STAT"
@@ -588,6 +605,8 @@ def extract_sample_frames_for_video(
     max_frames: int = 3,
     video_meta: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
+    if not isinstance(max_frames, int) or not 1 <= max_frames <= 3:
+        return [{"status": "BLOCKED_EXTRACTION_LIMIT"}]
     path = Path(path_str).expanduser()
     outdir = Path(output_dir_str).expanduser()
     ffmpeg = shutil.which("ffmpeg")
@@ -600,6 +619,11 @@ def extract_sample_frames_for_video(
                 "retrieved_at": now_utc(),
             }
         ]
+
+    try:
+        path = _support.media_path(path)
+    except (OSError, ValueError) as exc:
+        return [{"status": "BLOCKED_FILE_LIMIT", "error": str(exc)}]
 
     if not ffmpeg:
         return [
@@ -648,7 +672,7 @@ def extract_sample_frames_for_video(
     frames: List[Dict[str, Any]] = []
 
     for idx, t in enumerate(unique_times[:max_frames], start=1):
-        out = outdir / f"{safe_stem}_frame_{idx:02d}_t{t:.3f}.jpg"
+        out = _support.derived_path(outdir, safe_stem, f"frame_{idx:02d}_t{t:.3f}.jpg")
 
         frame: Dict[str, Any] = {
             "frame_id": f"FRM-{uuid.uuid4()}",
@@ -673,6 +697,7 @@ def extract_sample_frames_for_video(
 
         cmd = [
             ffmpeg,
+            "-protocol_whitelist", "file",
             "-hide_banner",
             "-loglevel",
             "error",
@@ -685,11 +710,11 @@ def extract_sample_frames_for_video(
             "-q:v",
             "2",
             str(out),
-            "-y",
+            "-n",
         ]
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            proc = _support.run_decoder(cmd, timeout=60)
         except subprocess.TimeoutExpired:
             frame["status"] = "FAILED_TIMEOUT"
             frames.append(frame)
@@ -1007,8 +1032,8 @@ class TraceAtlasVIDINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "VIDINT Manager / Media Intelligence Manager",
-                    "authorization_basis": "customer-authorized public/authorized VIDINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "local video hashing",
                         "authorized technical metadata extraction",
@@ -1117,10 +1142,10 @@ class TraceAtlasVIDINTPanel(tk.Tk):
         if not payload.get("tool_availability", {}).get("ffmpeg"):
             warnings.append("ffmpeg is not available. Local sample frame extraction will be blocked.")
 
-        if not payload.get("configured_models"):
+        if not _support.has_configuration(payload.get("configured_models")):
             warnings.append("No vision/OCR/embedding/audio models configured. Semantic video analysis remains planning-only.")
 
-        if not payload.get("configured_connectors"):
+        if not _support.has_configuration(payload.get("configured_connectors")):
             warnings.append("No reverse-video/archive/GEOINT connectors configured. External provenance checks remain planning-only.")
 
         if payload.get("target_type") == "person_visible_context_privacy_limited":
@@ -1300,6 +1325,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
                 analyzed.append(analyze_video_file(p))
 
             self.analyzed_videos = analyzed
+            self._analysis_payload = payload
             report = self._build_local_analysis_report(analyzed, payload, policy)
             self.after(0, lambda: self._show_local_analysis(report))
 
@@ -1307,6 +1333,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
 
     def extract_sample_frames(self) -> None:
         payload = self.collect_payload()
+        _support.invalidate_analysis(self, payload)
         policy = self.policy_screen(payload)
 
         if policy["status"] == "POLICY_BLOCKED":
@@ -1352,6 +1379,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
                 )
 
             self.extracted_frames = all_frames
+            self._analysis_payload = payload
             report = self._build_frame_report(all_frames, payload, policy)
             self.after(0, lambda: self._show_frame_report(report))
 
@@ -1359,6 +1387,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
 
     def generate_plan(self) -> None:
         payload = self.collect_payload()
+        _support.invalidate_analysis(self, payload)
         warnings = self.validate_payload(payload)
         policy = self.policy_screen(payload)
 
@@ -1891,7 +1920,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
                     "priority": priority,
                     "privacy_risk": privacy_risk,
                     "policy_note": policy_note,
-                    "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                     "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                 }
             )
@@ -2110,7 +2139,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
                 "expected_output": "Derived frame evidence objects with original-video provenance.",
             }
 
-        if not payload.get("configured_models"):
+        if not _support.has_configuration(payload.get("configured_models")):
             return {
                 "action": "Configure approved OCR/vision/embedding/audio models if semantic video analysis is required.",
                 "reason": "Local deterministic analysis cannot establish scene content, events, objects, OCR text, or speech.",
@@ -3708,30 +3737,7 @@ class TraceAtlasVIDINTPanel(tk.Tk):
         }
 
     def export_json(self) -> None:
-        if not self.last_result:
-            self.generate_plan()
-
-        data = self.last_result or self.collect_payload()
-
-        payload_for_name = data.get("payload", data)
-        case_id = payload_for_name.get("case_id", "vidint")
-        task_id = payload_for_name.get("task_id", "task")
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{case_id}_{task_id}.json",
-        )
-
-        if not path:
-            return
-
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Export Complete", f"VIDINT JSON saved to:\n{path}")
-        except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+        _support.export_snapshot(self, filedialog, messagebox)
 
     def copy_output(self) -> None:
         text = self.output.get("1.0", "end-1c").strip()

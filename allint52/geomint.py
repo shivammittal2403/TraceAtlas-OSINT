@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+if __package__:
+    from . import _support
+else:
+    import _support
+
 import json
 import re
 import math
@@ -731,8 +736,8 @@ class TraceAtlasGEOINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "GEOINT Manager",
-                    "authorization_basis": "customer-authorized public/authorized GEOINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "public map review",
                         "authorized geocoding",
@@ -829,7 +834,7 @@ class TraceAtlasGEOINTPanel(tk.Tk):
         if not payload.get("coordinates") and not payload.get("addresses") and not payload.get("place_names") and not payload.get("known_locations"):
             warnings.append("No coordinates, addresses, place names, or known locations provided. Candidate generation will be limited.")
 
-        if not payload.get("authorization"):
+        if not _support.has_authorization(payload.get("authorization")):
             warnings.append("No authorization basis provided. Treat as policy-limited planning only.")
 
         if not payload.get("scope"):
@@ -843,7 +848,7 @@ class TraceAtlasGEOINTPanel(tk.Tk):
         if payload.get("target_type") == "person":
             warnings.append("Person target triggers privacy precision controls. Do not output exact private-person location without authorization and human review.")
 
-        if not payload.get("configured_connectors"):
+        if not _support.has_configuration(payload.get("configured_connectors")):
             warnings.append("No configured connectors. Forward/reverse geocoding, map tiles, terrain, and satellite analysis remain planning-only.")
 
         return warnings
@@ -1530,7 +1535,7 @@ class TraceAtlasGEOINTPanel(tk.Tk):
                     "expected_output": expected_output,
                     "privacy_risk": privacy_risk,
                     "priority": priority,
-                    "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                     "network_call_performed": False,
                 }
             )
@@ -2881,7 +2886,7 @@ class TraceAtlasGEOINTPanel(tk.Tk):
                 "expected_output": "Valid coordinate input or alternative location clue set.",
             }
 
-        if not payload.get("configured_connectors"):
+        if not _support.has_configuration(payload.get("configured_connectors")):
             return {
                 "action": "Configure approved public/authorized geocoder, map, terrain, transport, and imagery connectors.",
                 "reason": "Planning-only mode cannot resolve addresses, reverse geocode, verify map geometry, or inspect imagery.",
@@ -3372,30 +3377,7 @@ class TraceAtlasGEOINTPanel(tk.Tk):
         }
 
     def export_json(self) -> None:
-        if not self.last_result:
-            self.generate_plan()
-
-        data = self.last_result or self.collect_payload()
-
-        payload_for_name = data.get("payload", data)
-        case_id = payload_for_name.get("case_id", "geoint")
-        task_id = payload_for_name.get("task_id", "task")
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{case_id}_{task_id}.json",
-        )
-
-        if not path:
-            return
-
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Export Complete", f"GEOINT JSON saved to:\n{path}")
-        except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+        _support.export_snapshot(self, filedialog, messagebox)
 
     def copy_output(self) -> None:
         text = self.output.get("1.0", "end-1c").strip()

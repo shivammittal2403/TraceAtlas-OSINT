@@ -1,5 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+
+if __package__:
+    from . import _support
+else:
+    import _support
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -461,8 +466,8 @@ class TraceAtlasOSINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "OSINT Manager",
-                    "authorization_basis": "customer-authorized public OSINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "public search",
                         "public archive review",
@@ -595,7 +600,7 @@ class TraceAtlasOSINTPanel(tk.Tk):
         if not payload.get("questions"):
             warnings.append("No intelligence questions provided. Default questions will be inferred.")
 
-        if not payload.get("authorization"):
+        if not _support.has_authorization(payload.get("authorization")):
             warnings.append("No authorization basis provided. Treat as policy-limited planning only.")
 
         if not payload.get("scope"):
@@ -612,6 +617,7 @@ class TraceAtlasOSINTPanel(tk.Tk):
         payload = self.collect_payload()
         warnings = self.validate_payload(payload)
 
+        search_plan = self._build_search_plan(payload)
         result = {
             "mode": "PLANNING_ONLY",
             "policy": (
@@ -623,7 +629,8 @@ class TraceAtlasOSINTPanel(tk.Tk):
             "warnings": warnings,
             "payload": payload,
             "intelligence_questions": payload.get("questions") or self._default_questions(payload),
-            "search_plan": self._build_search_plan(payload),
+            "search_plan": search_plan,
+            "planning_limit": {"max_rows": 250, "row_limit_reached": len(search_plan) >= 250, "execution": "NOT_EXECUTED"},
             "fact_gate_criteria": self._fact_gate_criteria(),
             "evidence_schema": self._evidence_schema(),
             "observation_schema": self._observation_schema(),
@@ -709,7 +716,7 @@ class TraceAtlasOSINTPanel(tk.Tk):
         plan: List[Dict[str, Any]] = []
         priority = 1
 
-        for question in questions:
+        for question in questions[:250]:
             families = self._query_families_for_target(target_type, str(question))
 
             for query_family, provider, source_type, purpose in families:
@@ -729,13 +736,15 @@ class TraceAtlasOSINTPanel(tk.Tk):
                             target_type,
                         ),
                         "estimated_cost": self._estimate_cost(query_family, provider),
-                        "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                        "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                         "policy_risk": "LOW_IF_PASSIVE_PUBLIC",
                         "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                     }
                 )
 
                 priority += 1
+                if len(plan) >= 250:
+                    return plan
 
         return plan
 
@@ -1432,7 +1441,7 @@ class TraceAtlasOSINTPanel(tk.Tk):
         path = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{payload.get('case_id', 'case')}_{payload.get('task_id', 'task')}.json",
+            initialfile=f"{_support.safe_filename(payload.get('case_id', 'case'))}_{_support.safe_filename(payload.get('task_id', 'task'))}.json",
         )
 
         if not path:

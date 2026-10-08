@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+if __package__:
+    from . import _support
+else:
+    import _support
+
 import json
 import re
 import socket
@@ -250,22 +255,7 @@ def parse_dict(value: str) -> Dict[str, Any]:
 
 
 def redact_sensitive_text(text: str) -> str:
-    """
-    Light redaction for incidental secrets in public page previews.
-    This is not a substitute for full DLP.
-    """
-    text = re.sub(
-        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-        "[REDACTED_PRIVATE_KEY]",
-        text,
-        flags=re.S | re.I,
-    )
-    text = re.sub(
-        r"(?i)\b(password|passwd|pwd|token|api[_-]?key|secret)\b\s*[:=]\s*[^\s,;]+",
-        r"\1=[REDACTED]",
-        text,
-    )
-    return text
+    return _support.redact_text(text)
 
 
 def extract_emails(text: str) -> List[str]:
@@ -422,7 +412,8 @@ def is_unsafe_ip_string(ip_str: str) -> bool:
         return True
 
     return (
-        ip.is_private
+        not ip.is_global
+        or ip.is_private
         or ip.is_loopback
         or ip.is_link_local
         or ip.is_reserved
@@ -492,8 +483,11 @@ def validate_public_url(
         return False, url, [f"URL_PARSE_ERROR: {exc}"]
 
     scheme = (parsed.scheme or "").lower()
-    host = (parsed.hostname or "").lower()
-    port = parsed.port
+    try:
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as exc:
+        return False, url, [f"URL_PARSE_ERROR: {exc}"]
 
     if scheme not in {"http", "https"}:
         reasons.append("SCHEME_NOT_ALLOWED")
@@ -504,7 +498,7 @@ def validate_public_url(
     if parsed.username or parsed.password:
         reasons.append("URL_USERINFO_NOT_ALLOWED")
 
-    if port and port not in {80, 443}:
+    if port is not None and port != (443 if scheme == "https" else 80):
         reasons.append("NON_DEFAULT_PORT_NOT_ALLOWED")
 
     if allowed_domains:
@@ -520,7 +514,7 @@ def validate_public_url(
     if reasons:
         return False, url, reasons
 
-    netloc = host
+    netloc = f"[{host}]" if ":" in host else host
     normalized = urlunparse(
         (
             scheme,
@@ -607,12 +601,6 @@ def safe_fetch_url(
 
     result["normalized_url"] = normalized
 
-    opener = OpenerDirector()
-    opener.add_handler(NoRedirect())
-    opener.add_handler(HTTPHandler())
-    opener.add_handler(HTTPSHandler())
-    opener.add_handler(HTTPErrorProcessor())
-
     headers = {
         "User-Agent": "TraceAtlas-WEBINT/0.1 (+public OSINT; passive; planning-safe)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.7",
@@ -632,10 +620,8 @@ def safe_fetch_url(
 
         current_url = current_normalized
 
-        req = Request(current_url, headers=headers, method="GET")
-
         try:
-            with opener.open(req, timeout=timeout) as resp:
+            with _support.open_public_url(current_url, headers, timeout=timeout) as resp:
                 status = getattr(resp, "status", None) or resp.getcode()
                 content_type = resp.headers.get_content_type()
 
@@ -676,6 +662,7 @@ def safe_fetch_url(
                 except LookupError:
                     text = raw.decode("utf-8", errors="replace")
 
+                result["redactions"] = ["Sensitive-key redaction applied; manual review required before disclosure."]
                 text = redact_sensitive_text(text)
                 result["text_preview"] = text[:5000]
 
@@ -1102,8 +1089,8 @@ class TraceAtlasWEBINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "WEBINT Manager / OSINT Manager",
-                    "authorization_basis": "customer-authorized public/authorized WEBINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "public webpage fetch",
                         "public archive query",
@@ -1200,7 +1187,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
         if not payload.get("seed_urls") and not payload.get("seed_domains"):
             warnings.append("No seed URLs or domains provided. SEARCHINT handoff may be required.")
 
-        if not payload.get("authorization"):
+        if not _support.has_authorization(payload.get("authorization")):
             warnings.append("No authorization basis provided. Treat as policy-limited planning only.")
 
         if not payload.get("scope"):
@@ -1438,6 +1425,9 @@ class TraceAtlasWEBINTPanel(tk.Tk):
             return
 
         allowed_domains = self._allowed_domains(payload)
+        if not allowed_domains or not _support.has_authorization(payload.get("authorization")):
+            messagebox.showwarning("Missing Scope", "Provide an explicit allowed-domain scope and authorization basis before fetching.")
+            return
 
         self.output.delete("1.0", "end")
         self.output.insert("1.0", "Running strictly bounded safe public fetch...\n")
@@ -1640,7 +1630,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
                     "page_limit": 0,
                     "time_limit": 0,
                     "source_type": "planning_control",
-                    "authorization_status": "ALLOWED",
+                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                     "expected_output": "Truncated seed list",
                     "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                 }
@@ -1690,7 +1680,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
                         "page_limit": 1,
                         "time_limit": 30,
                         "source_type": "public_website",
-                        "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                        "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                         "expected_output": "EvidenceObject, observations, entities, links, structured data, source assessment",
                         "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                     }
@@ -1712,7 +1702,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
                             "page_limit": 0,
                             "time_limit": 0,
                             "source_type": "planning_control",
-                            "authorization_status": "ALLOWED",
+                            "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                             "expected_output": "Truncated plan",
                             "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                         }
@@ -1759,7 +1749,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
                         "page_limit": 1,
                         "time_limit": 20,
                         "source_type": "public_structural_metadata",
-                        "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                        "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                         "expected_output": "Sitemap URLs, robots metadata, feed entries, candidate pages",
                         "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                     }
@@ -1783,7 +1773,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
                 "page_limit": 25,
                 "time_limit": 120,
                 "source_type": "public_document_discovery",
-                "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                 "expected_output": "Document evidence references, metadata, extracted entities, handoff tasks",
                 "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
             }
@@ -1804,7 +1794,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
                 "page_limit": 50,
                 "time_limit": 180,
                 "source_type": "web_link_graph",
-                "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                 "expected_output": "Link graph edges, external domain candidates, ownership caution notes",
                 "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
             }
@@ -3438,30 +3428,7 @@ class TraceAtlasWEBINTPanel(tk.Tk):
         ]
 
     def export_json(self) -> None:
-        if not self.last_result:
-            self.generate_plan()
-
-        data = self.last_result or self.collect_payload()
-
-        payload_for_name = data.get("payload", data)
-        case_id = payload_for_name.get("case_id", "webint")
-        task_id = payload_for_name.get("task_id", "task")
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{case_id}_{task_id}.json",
-        )
-
-        if not path:
-            return
-
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Export Complete", f"WEBINT JSON saved to:\n{path}")
-        except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+        _support.export_snapshot(self, filedialog, messagebox)
 
     def copy_output(self) -> None:
         text = self.output.get("1.0", "end-1c").strip()

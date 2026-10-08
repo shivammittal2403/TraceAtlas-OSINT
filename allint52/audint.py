@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+if __package__:
+    from . import _support
+else:
+    import _support
+
 import json
 import re
 import hashlib
@@ -391,6 +396,10 @@ def summarize_ffprobe(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def ffprobe_audio(path_str: str) -> Dict[str, Any]:
+    try:
+        path_str = str(_support.media_path(path_str))
+    except (OSError, ValueError) as exc:
+        return {"status": "BLOCKED_FILE_LIMIT", "reason": str(exc)}
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return {
@@ -400,6 +409,7 @@ def ffprobe_audio(path_str: str) -> Dict[str, Any]:
 
     cmd = [
         ffprobe,
+        "-protocol_whitelist", "file",
         "-v",
         "quiet",
         "-print_format",
@@ -410,7 +420,7 @@ def ffprobe_audio(path_str: str) -> Dict[str, Any]:
     ]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        proc = _support.run_decoder(cmd, timeout=30)
     except subprocess.TimeoutExpired:
         return {"status": "FAILED_TIMEOUT", "reason": "ffprobe timed out."}
     except Exception as exc:
@@ -438,6 +448,10 @@ def ffprobe_audio(path_str: str) -> Dict[str, Any]:
 
 
 def ffmpeg_volumedetect(path_str: str) -> Dict[str, Any]:
+    try:
+        path_str = str(_support.media_path(path_str))
+    except (OSError, ValueError) as exc:
+        return {"status": "BLOCKED_FILE_LIMIT", "reason": str(exc)}
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return {
@@ -447,6 +461,7 @@ def ffmpeg_volumedetect(path_str: str) -> Dict[str, Any]:
 
     cmd = [
         ffmpeg,
+        "-protocol_whitelist", "file",
         "-hide_banner",
         "-nostats",
         "-i",
@@ -459,7 +474,7 @@ def ffmpeg_volumedetect(path_str: str) -> Dict[str, Any]:
     ]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        proc = _support.run_decoder(cmd, timeout=60)
     except subprocess.TimeoutExpired:
         return {"status": "FAILED_TIMEOUT", "reason": "ffmpeg volumedetect timed out."}
     except Exception as exc:
@@ -620,6 +635,13 @@ def analyze_audio_file(path_str: str) -> Dict[str, Any]:
         return result
 
     try:
+        path = _support.media_path(path)
+    except (OSError, ValueError) as exc:
+        result["status"] = "BLOCKED_FILE_LIMIT"
+        result["error"] = str(exc)
+        return result
+
+    try:
         result["size_bytes"] = path.stat().st_size
     except Exception as exc:
         result["status"] = "FAILED_STAT"
@@ -661,6 +683,8 @@ def extract_sample_segments_for_audio(
     segment_seconds: float = 10.0,
     audio_meta: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
+    if not isinstance(max_segments, int) or not 1 <= max_segments <= 3 or not 0 < segment_seconds <= 30:
+        return [{"status": "BLOCKED_EXTRACTION_LIMIT"}]
     path = Path(path_str).expanduser()
     outdir = Path(output_dir_str).expanduser()
     ffmpeg = shutil.which("ffmpeg")
@@ -673,6 +697,11 @@ def extract_sample_segments_for_audio(
                 "retrieved_at": now_utc(),
             }
         ]
+
+    try:
+        path = _support.media_path(path)
+    except (OSError, ValueError) as exc:
+        return [{"status": "BLOCKED_FILE_LIMIT", "error": str(exc)}]
 
     if not ffmpeg:
         return [
@@ -732,7 +761,7 @@ def extract_sample_segments_for_audio(
         if seg_len <= 0:
             continue
 
-        out = outdir / f"{safe_stem}_seg_{idx:02d}_t{start:.3f}_{seg_len:.3f}s.wav"
+        out = _support.derived_path(outdir, safe_stem, f"seg_{idx:02d}_t{start:.3f}_{seg_len:.3f}s.wav")
 
         segment: Dict[str, Any] = {
             "segment_id": f"SEG-{uuid.uuid4()}",
@@ -762,6 +791,7 @@ def extract_sample_segments_for_audio(
 
         cmd = [
             ffmpeg,
+            "-protocol_whitelist", "file",
             "-hide_banner",
             "-loglevel",
             "error",
@@ -779,11 +809,11 @@ def extract_sample_segments_for_audio(
             "-ac",
             "1",
             str(out),
-            "-y",
+            "-n",
         ]
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            proc = _support.run_decoder(cmd, timeout=90)
         except subprocess.TimeoutExpired:
             segment["status"] = "FAILED_TIMEOUT"
             segments.append(segment)
@@ -1108,8 +1138,8 @@ class TraceAtlasAUDINTPanel(tk.Tk):
             "authorization",
             json.dumps(
                 {
-                    "authorized_by": "AUDINT Manager / Media Intelligence Manager",
-                    "authorization_basis": "customer-authorized public/authorized AUDINT engagement",
+                    "authorized_by": "",
+                    "authorization_basis": "",
                     "permitted_actions": [
                         "local audio hashing",
                         "authorized technical metadata extraction",
@@ -1221,10 +1251,10 @@ class TraceAtlasAUDINTPanel(tk.Tk):
         if not payload.get("tool_availability", {}).get("ffmpeg"):
             warnings.append("ffmpeg is not available. Loudness analysis and sample segment extraction will be blocked.")
 
-        if not payload.get("configured_models"):
+        if not _support.has_configuration(payload.get("configured_models")):
             warnings.append("No ASR/diarization/language/event models configured. Semantic audio analysis remains planning-only.")
 
-        if not payload.get("configured_connectors"):
+        if not _support.has_configuration(payload.get("configured_connectors")):
             warnings.append("No reverse-audio/archive/VIDINT/GEOINT connectors configured. External provenance checks remain planning-only.")
 
         if payload.get("target_type") in {
@@ -1429,6 +1459,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
                 analyzed.append(analyze_audio_file(p))
 
             self.analyzed_audio = analyzed
+            self._analysis_payload = payload
             report = self._build_local_analysis_report(analyzed, payload, policy)
             self.after(0, lambda: self._show_local_analysis(report))
 
@@ -1436,6 +1467,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
 
     def extract_sample_segments(self) -> None:
         payload = self.collect_payload()
+        _support.invalidate_analysis(self, payload)
         policy = self.policy_screen(payload)
 
         if policy["status"] == "POLICY_BLOCKED":
@@ -1482,6 +1514,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
                 )
 
             self.extracted_segments = all_segments
+            self._analysis_payload = payload
             report = self._build_segment_report(all_segments, payload, policy)
             self.after(0, lambda: self._show_segment_report(report))
 
@@ -1489,6 +1522,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
 
     def generate_plan(self) -> None:
         payload = self.collect_payload()
+        _support.invalidate_analysis(self, payload)
         warnings = self.validate_payload(payload)
         policy = self.policy_screen(payload)
 
@@ -2035,7 +2069,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
                     "priority": priority,
                     "privacy_risk": privacy_risk,
                     "policy_note": policy_note,
-                    "authorization_status": "ALLOWED_PUBLIC_OR_AUTHORIZED",
+                    "authorization_status": "NOT_VERIFIED_PLANNING_ONLY",
                     "execution_status": "NOT_EXECUTED_PLANNING_ONLY",
                 }
             )
@@ -2286,7 +2320,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
                 "expected_output": "Derived segment evidence objects with original-audio provenance.",
             }
 
-        if not payload.get("configured_models"):
+        if not _support.has_configuration(payload.get("configured_models")):
             return {
                 "action": "Configure approved ASR/diarization/language/event models if semantic audio analysis is required.",
                 "reason": "Local deterministic analysis cannot establish transcript, speaker tracks, language, or acoustic events.",
@@ -3891,30 +3925,7 @@ class TraceAtlasAUDINTPanel(tk.Tk):
         }
 
     def export_json(self) -> None:
-        if not self.last_result:
-            self.generate_plan()
-
-        data = self.last_result or self.collect_payload()
-
-        payload_for_name = data.get("payload", data)
-        case_id = payload_for_name.get("case_id", "audint")
-        task_id = payload_for_name.get("task_id", "task")
-
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{case_id}_{task_id}.json",
-        )
-
-        if not path:
-            return
-
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Export Complete", f"AUDINT JSON saved to:\n{path}")
-        except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+        _support.export_snapshot(self, filedialog, messagebox)
 
     def copy_output(self) -> None:
         text = self.output.get("1.0", "end-1c").strip()
