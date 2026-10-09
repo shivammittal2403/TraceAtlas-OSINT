@@ -1,0 +1,3104 @@
+{
+  "schema_version": "1.0.0",
+  "snapshot_date": "2026-10-09",
+  "status": "documentation_catalog_not_runtime_registry",
+  "count": 140,
+  "aliases": {
+    "MALINT": "MALWAREINT",
+    "DARKINT": "DARKWEBINT",
+    "CORPINT": "COMPANYINT",
+    "SCAMINT": "FRAUDINT",
+    "AVIINT": "AIRINT"
+  },
+  "family_relationships": {
+    "METINT": "MASINT",
+    "LINGINT": "LANGINT"
+  },
+  "historical_canonical_module_groups": {
+    "corporate_governance": [
+      "REGINT",
+      "COMPANYINT",
+      "OWNERSHIPINT",
+      "PROCUREMENTINT",
+      "TRADEINT",
+      "ADDRESSINT",
+      "LEGALINT",
+      "SANCTIONSINT",
+      "FININT"
+    ],
+    "cyber_threat_software": [
+      "IOCINT",
+      "VULNINT",
+      "THREATACTORINT",
+      "CAMPAIGNINT",
+      "MALWAREINT",
+      "PACKAGEINT",
+      "REPOINT",
+      "SUPPLYCHAININT",
+      "INCIDENTINT",
+      "LOGINT"
+    ],
+    "discovery_web_research": [
+      "WEBINT",
+      "SEARCHINT",
+      "DORKINT",
+      "USERNAMEINT",
+      "ARCHIVEINT",
+      "NEWSINT",
+      "ACADEMICINT",
+      "DATASETINT"
+    ],
+    "geo_event_transport": [
+      "GEOINT",
+      "MAPINT",
+      "SATINT",
+      "TRANSPORTINT",
+      "EVENTINT"
+    ],
+    "identity_communication": [
+      "EMAILINT",
+      "PHONEINT",
+      "SOCMINT",
+      "MESSENGERINT",
+      "INTERVIEWINT"
+    ],
+    "internet_infrastructure": [
+      "DOMAININT",
+      "DNSINT",
+      "CERTINT",
+      "IPINT",
+      "ASNINT",
+      "BGPINT",
+      "NETINT",
+      "CLOUDINT"
+    ],
+    "documents_media_verification": [
+      "DOCINT",
+      "METADATAINT",
+      "IMINT",
+      "VIDINT",
+      "AUDINT",
+      "DISINFOINT"
+    ],
+    "mobile_iot_ot": [
+      "APPINT",
+      "MOBILEINT",
+      "IOTINT",
+      "OTINT"
+    ],
+    "fraud_exposure_brand_market": [
+      "FRAUDINT",
+      "PAYMENTINT",
+      "CRYPTOINT",
+      "BRANDINT",
+      "ADINT",
+      "MARKETPLACEINT",
+      "JOBINT",
+      "COMPLAINTINT",
+      "EXPOSUREINT",
+      "DARKWEBINT"
+    ]
+  },
+  "historical_extended_disciplines": [
+    "AIINT",
+    "BREACHINT",
+    "CODEINT",
+    "COMINT",
+    "CREDINT",
+    "CTI",
+    "CYBINT",
+    "DECEPTIONINT",
+    "ELINT",
+    "EXPLOITINT",
+    "HUMINT",
+    "INFRAINT",
+    "MASINT",
+    "ORGINT",
+    "OSINT",
+    "PERSONINT",
+    "SIGINT",
+    "TECHINT",
+    "TTPINT"
+  ],
+  "entries": [
+    {
+      "number": 1,
+      "id": "OSINT",
+      "label": "Open Source Intelligence",
+      "canonical_id": "OSINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 2,
+      "id": "SOCMINT",
+      "label": "Social Media Intelligence",
+      "canonical_id": "SOCMINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 3,
+      "id": "WEBINT",
+      "label": "Web Intelligence",
+      "canonical_id": "WEBINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 4,
+      "id": "GEOINT",
+      "label": "Geospatial Intelligence",
+      "canonical_id": "GEOINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 5,
+      "id": "IMINT",
+      "label": "Imagery Intelligence",
+      "canonical_id": "IMINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "source preservation",
+        "image metadata",
+        "visual clues",
+        "duplicate/synthetic/manipulation indicators",
+        "GEOINT handoff"
+      ],
+      "distinctions": [
+        "detector output ≠ proven fake",
+        "image real ≠ caption true",
+        "similar face ≠ identity"
+      ],
+      "restrictions": [
+        "no face identification, biometric search, private tracking or sensitive trait inference"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 6,
+      "id": "VIDINT",
+      "label": "Video Intelligence",
+      "canonical_id": "VIDINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "shots/keyframes",
+        "temporal scene reasoning",
+        "source provenance",
+        "manipulation/clips reuse",
+        "audio handoff"
+      ],
+      "distinctions": [
+        "clip date ≠ event date",
+        "visual event ≠ inferred intent"
+      ],
+      "restrictions": [
+        "no face identity or private CCTV access"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 7,
+      "id": "AUDINT",
+      "label": "Audio Intelligence",
+      "canonical_id": "AUDINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "safe audio preservation",
+        "ASR/diarization",
+        "acoustic events",
+        "sync/edit/synthetic clues",
+        "source independence"
+      ],
+      "distinctions": [
+        "voice confidence ≠ truth",
+        "accent ≠ nationality",
+        "one deepfake detector ≠ proof"
+      ],
+      "restrictions": [
+        "no voice biometric identity, private interception, lie detection"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": "scripts/audint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 8,
+      "id": "SIGINT",
+      "label": "Signals Intelligence",
+      "canonical_id": "SIGINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "authorized spectrum/IQ/metadata",
+        "temporal emission pattern",
+        "sensor calibration",
+        "RF context"
+      ],
+      "distinctions": [
+        "RSSI ≠ exact distance",
+        "device ≠ person",
+        "unknown signal ≠ hostile"
+      ],
+      "restrictions": [
+        "no private interception, jamming, spoofing, tracking or targeting"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 9,
+      "id": "COMINT",
+      "label": "Communications Intelligence",
+      "canonical_id": "COMINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "consented/public communications",
+        "participants/threads/forward chains",
+        "claims vs observations",
+        "attachments and metadata"
+      ],
+      "distinctions": [
+        "account ≠ person",
+        "message claim ≠ truth",
+        "chat frequency ≠ leadership"
+      ],
+      "restrictions": [
+        "no private intercept, stolen sessions, deceptive private-group joins"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": "scripts/comint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 10,
+      "id": "ELINT",
+      "label": "Electronic Intelligence",
+      "canonical_id": "ELINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "non-communications RF/emitter descriptors",
+        "pulse/spectrum observations",
+        "emitter class vs platform"
+      ],
+      "distinctions": [
+        "emitter class ≠ exact platform",
+        "non-detection ≠ absence"
+      ],
+      "restrictions": [
+        "no jamming, electronic-attack waveforms, evasion/targeting guidance"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 11,
+      "id": "CYBINT",
+      "label": "Cyber Intelligence",
+      "canonical_id": "CYBINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "defensive IOC",
+        "infra/malware/actor/campaign",
+        "vulnerability context",
+        "authorized SOC/logs",
+        "reporting"
+      ],
+      "distinctions": [
+        "IOC ≠ attribution",
+        "CVE presence ≠ exploitation",
+        "IP provider ≠ attacker"
+      ],
+      "restrictions": [
+        "no exploits, credential attacks or offensive operations"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 12,
+      "id": "CTI",
+      "label": "Cyber Threat Intelligence",
+      "canonical_id": "CTI",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "threat intelligence PIR",
+        "TTPs/ATT&CK versioning",
+        "indicators and sightings",
+        "actor-label caution",
+        "STIX/TAXII/MISP"
+      ],
+      "distinctions": [
+        "campaign ≠ actor",
+        "malware family ≠ real-world operator",
+        "threat reports may share upstream source"
+      ],
+      "restrictions": [
+        "no malware deployment or intrusive threat-actor interaction"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 13,
+      "id": "TECHINT",
+      "label": "Technical Intelligence",
+      "canonical_id": "TECHINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 14,
+      "id": "NETINT",
+      "label": "Network Intelligence",
+      "canonical_id": "NETINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "passive infrastructure and authorized network telemetry",
+        "IP/ASN/BGP/cloud relationships",
+        "temporal routing",
+        "NAT/CDN context"
+      ],
+      "distinctions": [
+        "allocated_to ≠ owned_by",
+        "open port ≠ exploit",
+        "RPKI invalid ≠ hijack"
+      ],
+      "restrictions": [
+        "no unauthorized active scans, interception, route manipulation or exploitation"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 15,
+      "id": "INFRAINT",
+      "label": "Internet and Infrastructure Intelligence",
+      "canonical_id": "INFRAINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 16,
+      "id": "DNSINT",
+      "label": "DNS Intelligence",
+      "canonical_id": "DNSINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "A/AAAA/CNAME/MX/NS/TXT/SOA/SRV/CAA/PTR",
+        "pDNS",
+        "authoritative DNS",
+        "history",
+        "CDN/wildcard",
+        "DNSSEC and time"
+      ],
+      "distinctions": [
+        "pDNS first_seen ≠ creation",
+        "shared NS ≠ common owner",
+        "CDN edge ≠ origin"
+      ],
+      "restrictions": [
+        "no poisoning, unauthorized AXFR, DNS abuse"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 17,
+      "id": "DOMAININT",
+      "label": "Domain Intelligence",
+      "canonical_id": "DOMAININT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "RDAP/registrar/registry",
+        "domain control eras",
+        "historical DNS",
+        "associated companies",
+        "brands and typosquatting context"
+      ],
+      "distinctions": [
+        "registrar ≠ registrant",
+        "domain age ≠ benignity",
+        "historic owner ≠ current owner"
+      ],
+      "restrictions": [
+        "no domain takeover, unauthorized enumeration, registrar modification"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 18,
+      "id": "IPINT",
+      "label": "IP Intelligence",
+      "canonical_id": "IPINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "RIR/RDAP/ASN/BGP",
+        "IP usage eras",
+        "cloud/CDN sharing",
+        "reputation freshness",
+        "passive service evidence"
+      ],
+      "distinctions": [
+        "IP allocation ≠ tenant",
+        "IP geolocation ≠ exact person",
+        "old malicious reputation ≠ current maliciousness"
+      ],
+      "restrictions": [
+        "no unauthorized scans, brute-force, traffic interception"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 19,
+      "id": "MALINT",
+      "label": "Malware Intelligence",
+      "canonical_id": "MALWAREINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "safe sample/report analysis",
+        "static vs dynamic observations",
+        "family/variant resolution",
+        "IOC freshness",
+        "C2 claims",
+        "ATT&CK evidence mapping"
+      ],
+      "distinctions": [
+        "static clue ≠ executed behavior",
+        "sample ≠ family",
+        "family ≠ actor",
+        "embedded IOC ≠ contacted IOC"
+      ],
+      "restrictions": [
+        "no malware development, execution on host, evasion optimization or live C2 tasking"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 20,
+      "id": "VULNINT",
+      "label": "Vulnerability Intelligence",
+      "canonical_id": "VULNINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "CVE/CWE/CPE/PURL",
+        "vendor fixed/affected versions",
+        "CVSS/EPSS/KEV",
+        "backports",
+        "VEX/SBOM",
+        "asset applicability",
+        "defensive priority"
+      ],
+      "distinctions": [
+        "severity ≠ exploitability",
+        "exposure ≠ exploitation",
+        "component presence ≠ reachability"
+      ],
+      "restrictions": [
+        "no exploit execution or target-specific weaponization"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 21,
+      "id": "EXPLOITINT",
+      "label": "Exploitation Trends and Exposure Intelligence",
+      "canonical_id": "EXPLOITINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 22,
+      "id": "THREATACTORINT",
+      "label": "Threat Actor Intelligence",
+      "canonical_id": "THREATACTORINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 23,
+      "id": "IOCINT",
+      "label": "Indicator Intelligence",
+      "canonical_id": "IOCINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 24,
+      "id": "TTPINT",
+      "label": "Tactics Techniques and Procedures Intelligence",
+      "canonical_id": "TTPINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 25,
+      "id": "DARKINT",
+      "label": "Dark Web Intelligence",
+      "canonical_id": "DARKWEBINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 26,
+      "id": "BREACHINT",
+      "label": "Breach Intelligence",
+      "canonical_id": "BREACHINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "breach claim vs fact",
+        "sample/dataset authenticity",
+        "lineage/recycled leaks",
+        "record counts",
+        "first vs third-party origin",
+        "data class/impact"
+      ],
+      "distinctions": [
+        "email in leak ≠ company breached",
+        "sample ≠ full dataset",
+        "new listing ≠ new breach"
+      ],
+      "restrictions": [
+        "no illicit purchase, full stolen-data acquisition, or reuse of exposed secrets"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": "scripts/breachint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 27,
+      "id": "CREDINT",
+      "label": "Credential Exposure Intelligence",
+      "canonical_id": "CREDINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "exposed passwords/hashes",
+        "session tokens/keys/MFA secrets",
+        "stealer/combo source",
+        "account relevance",
+        "rotation/revocation",
+        "privacy-preserving fingerprinting"
+      ],
+      "distinctions": [
+        "exposed ≠ valid ≠ compromised",
+        "password reset ≠ sessions revoked",
+        "stealer log ≠ website breach"
+      ],
+      "restrictions": [
+        "never test or use passwords, keys, cookies, refresh tokens, recovery codes, or log in"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 28,
+      "id": "HUMINT",
+      "label": "Human Intelligence",
+      "canonical_id": "HUMINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "consensual interviews",
+        "basis of knowledge",
+        "firsthand vs hearsay",
+        "source reliability separate from claim credibility",
+        "memory/time limits",
+        "independent corroboration"
+      ],
+      "distinctions": [
+        "source confidence ≠ accuracy",
+        "consistent testimony ≠ verified fact",
+        "demeanor ≠ lie detector",
+        "refusal ≠ guilt"
+      ],
+      "restrictions": [
+        "no covert recruitment, coercion, blackmail, deception or identity impersonation",
+        "no private interception or sensitive profiling"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 29,
+      "id": "FININT",
+      "label": "Financial Intelligence",
+      "canonical_id": "FININT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "authorized financial records",
+        "cash/payment flow",
+        "beneficiary vs processor",
+        "source-of-funds claims",
+        "benign alternatives",
+        "deterministic currency/amount arithmetic"
+      ],
+      "distinctions": [
+        "invoice ≠ payment",
+        "account holder ≠ operator",
+        "anomaly ≠ crime",
+        "flow ≠ ownership"
+      ],
+      "restrictions": [
+        "no unauthorized bank access or fund movement",
+        "no money laundering, fraud or sanctions evasion"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 30,
+      "id": "TRADEINT",
+      "label": "Trade Intelligence",
+      "canonical_id": "TRADEINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "shipper/consignee/buyer/seller roles",
+        "HS version",
+        "quantities/values",
+        "origin vs transit",
+        "BOL vs invoice",
+        "Incoterms",
+        "sanctions/export control context"
+      ],
+      "distinctions": [
+        "shipper ≠ manufacturer",
+        "consignee ≠ end user",
+        "invoice ≠ shipment",
+        "route anomaly ≠ evasion"
+      ],
+      "restrictions": [
+        "no customs/sanctions/export-control evasion or illicit logistics"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 31,
+      "id": "CORPINT",
+      "label": "Corporate and Business Intelligence",
+      "canonical_id": "COMPANYINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "legal identity",
+        "registrations",
+        "directors/officers",
+        "share classes",
+        "shareholders",
+        "beneficial owners",
+        "corporate control eras",
+        "filing time"
+      ],
+      "distinctions": [
+        "director ≠ owner",
+        "owner ≠ beneficial owner",
+        "shared address ≠ same owner",
+        "brand ≠ company"
+      ],
+      "restrictions": [
+        "no doxxing directors or hidden ownership evasion design"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": "scripts/companyint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 32,
+      "id": "ORGINT",
+      "label": "Organisational Intelligence",
+      "canonical_id": "ORGINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "formal vs functional reporting",
+        "unit/role/person separations",
+        "delegated authority",
+        "governance",
+        "program/project",
+        "capacity and dependencies",
+        "historical changes"
+      ],
+      "distinctions": [
+        "title ≠ authority",
+        "role ≠ person",
+        "org chart ≠ actual structure"
+      ],
+      "restrictions": [
+        "no social engineering or private-employee targeting"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 33,
+      "id": "SUPPLYCHAININT",
+      "label": "Supply Chain Intelligence",
+      "canonical_id": "SUPPLYCHAININT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "direct/4th/nth-party dependency",
+        "SBOM/VEX/PURL",
+        "cloud/IdP/CI/CD common failures",
+        "criticality/substitution",
+        "vendor incidents",
+        "supplier alternatives"
+      ],
+      "distinctions": [
+        "contract ≠ active use",
+        "SBOM ≠ deployed reality",
+        "supplier incident ≠ customer compromise",
+        "single provider ≠ SPOF"
+      ],
+      "restrictions": [
+        "no vendor intrusion, sabotage, malicious packages, or dependency attack prioritization"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 34,
+      "id": "SCAMINT",
+      "label": "Scam and Fraud Intelligence",
+      "canonical_id": "FRAUDINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "scam typologies",
+        "claimed vs observed fraud",
+        "impersonation",
+        "payment/complaints",
+        "campaign clustering",
+        "reversals/refunds and net loss",
+        "benign alternatives"
+      ],
+      "distinctions": [
+        "complaint ≠ proven fraud",
+        "chargeback ≠ fraud",
+        "account holder ≠ fraud operator",
+        "anomaly ≠ crime"
+      ],
+      "restrictions": [
+        "no phishing, scam scripts, laundering, forged documents or fraud-evasion guidance"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 35,
+      "id": "PAYMENTINT",
+      "label": "Payment Intelligence",
+      "canonical_id": "PAYMENTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 36,
+      "id": "CRYPTOINT",
+      "label": "Blockchain and Cryptocurrency Intelligence",
+      "canonical_id": "CRYPTOINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 37,
+      "id": "SANCTIONSINT",
+      "label": "Sanctions Intelligence",
+      "canonical_id": "SANCTIONSINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 38,
+      "id": "PROCUREMENTINT",
+      "label": "Procurement Intelligence",
+      "canonical_id": "PROCUREMENTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 39,
+      "id": "LEGALINT",
+      "label": "Legal Record Intelligence",
+      "canonical_id": "LEGALINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 40,
+      "id": "REGINT",
+      "label": "Regulatory Intelligence",
+      "canonical_id": "REGINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 41,
+      "id": "POLINT",
+      "label": "Political Intelligence",
+      "canonical_id": "POLINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 42,
+      "id": "GOVINT",
+      "label": "Government Public Record Intelligence",
+      "canonical_id": "GOVINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 43,
+      "id": "MILINT",
+      "label": "Military Intelligence",
+      "canonical_id": "MILINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 44,
+      "id": "STRATINT",
+      "label": "Strategic Intelligence",
+      "canonical_id": "STRATINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 45,
+      "id": "TACTINT",
+      "label": "Tactical Intelligence",
+      "canonical_id": "TACTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 46,
+      "id": "OPINT",
+      "label": "Operational Intelligence",
+      "canonical_id": "OPINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 47,
+      "id": "CRIMINT",
+      "label": "Criminal Intelligence",
+      "canonical_id": "CRIMINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 48,
+      "id": "COUNTERINT",
+      "label": "Counterintelligence",
+      "canonical_id": "COUNTERINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 49,
+      "id": "CTINT",
+      "label": "Counter Terrorism Intelligence",
+      "canonical_id": "CTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 50,
+      "id": "MARINT",
+      "label": "Maritime Intelligence",
+      "canonical_id": "MARINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 51,
+      "id": "AIRINT",
+      "label": "Aviation Intelligence",
+      "canonical_id": "AIRINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/aviint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 52,
+      "id": "SPACEINT",
+      "label": "Space Intelligence",
+      "canonical_id": "SPACEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 53,
+      "id": "SATINT",
+      "label": "Satellite Intelligence",
+      "canonical_id": "SATINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 54,
+      "id": "RFINT",
+      "label": "Radio Frequency Intelligence",
+      "canonical_id": "RFINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 55,
+      "id": "AISINT",
+      "label": "Maritime AIS Intelligence",
+      "canonical_id": "AISINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-aisint.md"
+      ],
+      "runtime_binding": "scripts/aisint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 56,
+      "id": "ADSBINT",
+      "label": "Aircraft ADS-B Intelligence",
+      "canonical_id": "ADSBINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/adsbint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 57,
+      "id": "METINT",
+      "label": "Measurement and Signature Intelligence",
+      "canonical_id": "METINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-metint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 58,
+      "id": "MASINT",
+      "label": "Measurement and Signature Intelligence Formal Category",
+      "canonical_id": "MASINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 59,
+      "id": "RADINT",
+      "label": "Radar Intelligence",
+      "canonical_id": "RADINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-radint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 60,
+      "id": "ACOUSTINT",
+      "label": "Acoustic Intelligence",
+      "canonical_id": "ACOUSTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/acoustint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 61,
+      "id": "SEISINT",
+      "label": "Seismic Intelligence",
+      "canonical_id": "SEISINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-seisint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 62,
+      "id": "NUCINT",
+      "label": "Nuclear Signature Intelligence",
+      "canonical_id": "NUCINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 63,
+      "id": "ENVINT",
+      "label": "Environmental Intelligence",
+      "canonical_id": "ENVINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-envint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 64,
+      "id": "WEATHERINT",
+      "label": "Weather Intelligence",
+      "canonical_id": "WEATHERINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 65,
+      "id": "MAPINT",
+      "label": "Mapping Intelligence",
+      "canonical_id": "MAPINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 66,
+      "id": "LOCINT",
+      "label": "Location Intelligence",
+      "canonical_id": "LOCINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-locint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 67,
+      "id": "MOBINT",
+      "label": "Mobility Intelligence",
+      "canonical_id": "MOBINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-mobint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 68,
+      "id": "TRANSPORTINT",
+      "label": "Transport Intelligence",
+      "canonical_id": "TRANSPORTINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/spec-transportint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 69,
+      "id": "LOGISTICSINT",
+      "label": "Logistics Intelligence (user label LOGINT)",
+      "canonical_id": "LOGISTICSINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": "LOGINT in the older 65-module graph means log telemetry; keep logistics as a distinct profile."
+    },
+    {
+      "number": 70,
+      "id": "MEDIAINT",
+      "label": "Media Intelligence",
+      "canonical_id": "MEDIAINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 71,
+      "id": "NEWSINT",
+      "label": "News Intelligence",
+      "canonical_id": "NEWSINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/spec-newsint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 72,
+      "id": "DISINFOINT",
+      "label": "Disinformation Intelligence",
+      "canonical_id": "DISINFOINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 73,
+      "id": "NARRATIVEINT",
+      "label": "Narrative Intelligence",
+      "canonical_id": "NARRATIVEINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/spec-narrativeint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 74,
+      "id": "INFLUENCEINT",
+      "label": "Meme and Influence Intelligence",
+      "canonical_id": "INFLUENCEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 75,
+      "id": "LANGINT",
+      "label": "Language Intelligence",
+      "canonical_id": "LANGINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 76,
+      "id": "LINGINT",
+      "label": "Linguistic Intelligence",
+      "canonical_id": "LINGINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 77,
+      "id": "DOCINT",
+      "label": "Document Intelligence",
+      "canonical_id": "DOCINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/spec-docint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 78,
+      "id": "DOCUMENT_FORENSICS_INT",
+      "label": "PDF and Document Forensics Intelligence",
+      "canonical_id": "DOCUMENT_FORENSICS_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 79,
+      "id": "EMAILINT",
+      "label": "Email Intelligence",
+      "canonical_id": "EMAILINT",
+      "document_status": "full_specialist_prompt",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/spec-emailint.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 80,
+      "id": "PHONEINT",
+      "label": "Telephone Intelligence",
+      "canonical_id": "PHONEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 81,
+      "id": "USERNAMEINT",
+      "label": "Username Intelligence",
+      "canonical_id": "USERNAMEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 82,
+      "id": "IDENTITYINT",
+      "label": "Identity Resolution Intelligence",
+      "canonical_id": "IDENTITYINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 83,
+      "id": "PERSONINT",
+      "label": "Person Intelligence",
+      "canonical_id": "PERSONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 84,
+      "id": "RELATIONSHIPINT",
+      "label": "Relationship Intelligence",
+      "canonical_id": "RELATIONSHIPINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 85,
+      "id": "GRAPHINT",
+      "label": "Graph Intelligence",
+      "canonical_id": "GRAPHINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 86,
+      "id": "TIMELINEINT",
+      "label": "Timeline Intelligence",
+      "canonical_id": "TIMELINEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 87,
+      "id": "EVENTINT",
+      "label": "Event Intelligence",
+      "canonical_id": "EVENTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 88,
+      "id": "BEHAVIOURALINT",
+      "label": "Behavioural Intelligence",
+      "canonical_id": "BEHAVIOURALINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/behaviouralint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 89,
+      "id": "PATTERNINT",
+      "label": "Pattern Intelligence",
+      "canonical_id": "PATTERNINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 90,
+      "id": "ANOMALYINT",
+      "label": "Anomaly Intelligence",
+      "canonical_id": "ANOMALYINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/anomalyint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 91,
+      "id": "FORENSICINT",
+      "label": "Forensic Intelligence",
+      "canonical_id": "FORENSICINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 92,
+      "id": "DFIRINT",
+      "label": "Digital Forensics and Incident Response Intelligence",
+      "canonical_id": "DFIRINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 93,
+      "id": "HOSTINT",
+      "label": "Host Intelligence",
+      "canonical_id": "HOSTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 94,
+      "id": "CLOUDINT",
+      "label": "Cloud Intelligence",
+      "canonical_id": "CLOUDINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": "scripts/cloudint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 95,
+      "id": "CONTAINERINT",
+      "label": "Container Intelligence",
+      "canonical_id": "CONTAINERINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/containerint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 96,
+      "id": "CODEINT",
+      "label": "Source Code Intelligence",
+      "canonical_id": "CODEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": "scripts/codeint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 97,
+      "id": "REPOINT",
+      "label": "Repository Intelligence",
+      "canonical_id": "REPOINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 98,
+      "id": "DEVINT",
+      "label": "Developer Ecosystem Intelligence",
+      "canonical_id": "DEVINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 99,
+      "id": "PACKAGEINT",
+      "label": "Package Intelligence",
+      "canonical_id": "PACKAGEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 100,
+      "id": "SBOMINT",
+      "label": "Software Bill of Materials Intelligence",
+      "canonical_id": "SBOMINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 101,
+      "id": "AIINT",
+      "label": "AI Ecosystem Intelligence",
+      "canonical_id": "AIINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": "scripts/aiint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 102,
+      "id": "LLMINT",
+      "label": "LLM Intelligence",
+      "canonical_id": "LLMINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 103,
+      "id": "MODELINT",
+      "label": "Model Intelligence",
+      "canonical_id": "MODELINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 104,
+      "id": "DATAINT",
+      "label": "Dataset Intelligence",
+      "canonical_id": "DATAINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 105,
+      "id": "RESEARCHINT",
+      "label": "Research Literature Intelligence",
+      "canonical_id": "RESEARCHINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 106,
+      "id": "PATINT",
+      "label": "Patent Intelligence",
+      "canonical_id": "PATINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 107,
+      "id": "ACADEMICINT",
+      "label": "Academic Ecosystem Intelligence",
+      "canonical_id": "ACADEMICINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "public scholarly metadata",
+        "papers/research groups",
+        "institutions/grants/citations",
+        "preprint vs peer review",
+        "retractions/corrections",
+        "source/author and topical relevance"
+      ],
+      "distinctions": [
+        "citation count ≠ research quality",
+        "preprint ≠ peer-reviewed",
+        "coauthor ≠ personal affiliation",
+        "affiliation ≠ ownership"
+      ],
+      "restrictions": [
+        "no paywall/access bypass, plagiarism, fabrication, unauthorized private researcher profiling"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md",
+        "references/academicint-incomplete-python.txt"
+      ],
+      "runtime_binding": "scripts/academicint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 108,
+      "id": "HEALTHINT",
+      "label": "Public Health Intelligence",
+      "canonical_id": "HEALTHINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 109,
+      "id": "BIOINT",
+      "label": "Biological Intelligence",
+      "canonical_id": "BIOINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 110,
+      "id": "ECONINT",
+      "label": "Economic Intelligence",
+      "canonical_id": "ECONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 111,
+      "id": "MARKETINT",
+      "label": "Market Intelligence",
+      "canonical_id": "MARKETINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 112,
+      "id": "COMPETITIVEINT",
+      "label": "Competitive Intelligence",
+      "canonical_id": "COMPETITIVEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 113,
+      "id": "RISKINT",
+      "label": "Risk Intelligence",
+      "canonical_id": "RISKINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 114,
+      "id": "REPUTATIONINT",
+      "label": "Reputation Intelligence",
+      "canonical_id": "REPUTATIONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 115,
+      "id": "BRANDINT",
+      "label": "Brand Intelligence",
+      "canonical_id": "BRANDINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": "scripts/brandint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 116,
+      "id": "FRAUDINT",
+      "label": "Fraud Intelligence",
+      "canonical_id": "FRAUDINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [
+        "scam typologies",
+        "claimed vs observed fraud",
+        "impersonation",
+        "payment/complaints",
+        "campaign clustering",
+        "reversals/refunds and net loss",
+        "benign alternatives"
+      ],
+      "distinctions": [
+        "complaint ≠ proven fraud",
+        "chargeback ≠ fraud",
+        "account holder ≠ fraud operator",
+        "anomaly ≠ crime"
+      ],
+      "restrictions": [
+        "no phishing, scam scripts, laundering, forged documents or fraud-evasion guidance"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 117,
+      "id": "SCAM_NETWORK_INT",
+      "label": "Scam Network Intelligence",
+      "canonical_id": "SCAM_NETWORK_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 118,
+      "id": "ASSETINT",
+      "label": "Asset Intelligence",
+      "canonical_id": "ASSETINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/assetint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 119,
+      "id": "FACILITYINT",
+      "label": "Facility Intelligence",
+      "canonical_id": "FACILITYINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 120,
+      "id": "ENERGYINT",
+      "label": "Energy Intelligence",
+      "canonical_id": "ENERGYINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 121,
+      "id": "ICS_OT_INT",
+      "label": "Industrial Control and Operational Technology Intelligence",
+      "canonical_id": "ICS_OT_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 122,
+      "id": "SCADAINT",
+      "label": "SCADA Intelligence",
+      "canonical_id": "SCADAINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 123,
+      "id": "IOTINT",
+      "label": "Internet of Things Intelligence",
+      "canonical_id": "IOTINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": true,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 124,
+      "id": "AUTOMOTIVEINT",
+      "label": "Automotive Intelligence",
+      "canonical_id": "AUTOMOTIVEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/automotiveint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 125,
+      "id": "MARITIME_CYBER_INT",
+      "label": "Maritime Cyber Intelligence",
+      "canonical_id": "MARITIME_CYBER_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 126,
+      "id": "AVIATION_CYBER_INT",
+      "label": "Aviation Cyber Intelligence",
+      "canonical_id": "AVIATION_CYBER_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/aviation_cyber_int.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 127,
+      "id": "SOURCEINT",
+      "label": "Source Intelligence",
+      "canonical_id": "SOURCEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 128,
+      "id": "PROVENANCEINT",
+      "label": "Provenance Intelligence",
+      "canonical_id": "PROVENANCEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 129,
+      "id": "EVIDENCEINT",
+      "label": "Evidence Intelligence",
+      "canonical_id": "EVIDENCEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 130,
+      "id": "HYPOTHESISINT",
+      "label": "Hypothesis Intelligence",
+      "canonical_id": "HYPOTHESISINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 131,
+      "id": "CONTRADICTIONINT",
+      "label": "Contradiction Intelligence",
+      "canonical_id": "CONTRADICTIONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": "scripts/contradictionint.py",
+      "runtime_status": "CODED_OFFLINE_IMPORT_TESTED",
+      "note": "",
+      "worker_binding": "traceatlas.ai_workforce.skills.pack.build_pack_employee"
+    },
+    {
+      "number": 132,
+      "id": "CORROBORATIONINT",
+      "label": "Corroboration Intelligence",
+      "canonical_id": "CORROBORATIONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 133,
+      "id": "DECEPTIONINT",
+      "label": "Deception Intelligence",
+      "canonical_id": "DECEPTIONINT",
+      "document_status": "specialist_summary",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": true,
+      "focus": [
+        "source-claim consistency",
+        "provenance/cross-source contradictions",
+        "document/media manipulation signals",
+        "context and narrative framing",
+        "alternative explanations"
+      ],
+      "distinctions": [
+        "inconsistency ≠ deliberate lie",
+        "tone ≠ deceit",
+        "manipulation indicator ≠ actor attribution"
+      ],
+      "restrictions": [
+        "no lie detection based on face/voice/emotion",
+        "no psychological manipulation tactics or political targeting"
+      ],
+      "references": [
+        "references/repository-master-prompt.txt",
+        "references/graph-memory.json",
+        "references/conversation-handover.md"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 134,
+      "id": "ATTRIBUTIONINT",
+      "label": "Attribution Intelligence",
+      "canonical_id": "ATTRIBUTIONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 135,
+      "id": "KNOWLEDGEINT",
+      "label": "Knowledge Intelligence",
+      "canonical_id": "KNOWLEDGEINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 136,
+      "id": "KAG_INT",
+      "label": "Knowledge Augmented Intelligence",
+      "canonical_id": "KAG_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 137,
+      "id": "RAG_INT",
+      "label": "Retrieval Grounded Intelligence",
+      "canonical_id": "RAG_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 138,
+      "id": "MULTIMODAL_INT",
+      "label": "Multimodal Intelligence",
+      "canonical_id": "MULTIMODAL_INT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 139,
+      "id": "FUSIONINT",
+      "label": "Fusion Intelligence",
+      "canonical_id": "FUSIONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    },
+    {
+      "number": 140,
+      "id": "DECISIONINT",
+      "label": "Decision Intelligence",
+      "canonical_id": "DECISIONINT",
+      "document_status": "taxonomy_contract_only",
+      "historical_canonical_module": false,
+      "historical_extended_discipline": false,
+      "focus": [],
+      "distinctions": [],
+      "restrictions": [],
+      "references": [
+        "references/repository-master-prompt.txt"
+      ],
+      "runtime_binding": null,
+      "runtime_status": "NOT_VERIFIED",
+      "note": ""
+    }
+  ]
+}

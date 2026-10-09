@@ -1,0 +1,3285 @@
+#!/usr/bin/env python3
+"""
+TRACEATLAS / CLOUDINT — Local defensive cloud intelligence pipeline.
+
+IMPORTANT SAFETY / POLICY NOTES:
+- This is a local demo implementation.
+- It does NOT access live cloud APIs, consoles, buckets, IAM, metadata services, or private tenants.
+- It does NOT use/test cloud credentials, redeem tokens, assume roles, bypass IAM/MFA/SSO,
+  perform privilege escalation, access cross-tenant resources, exploit SSRF/metadata,
+  download/upload private objects, modify IAM/firewalls/storage, disable/delete logs,
+  deploy malware, or perform unauthorized scanning.
+- It supports authorized, defensive, passive-first, evidence-first cloud intelligence only.
+- Sample data is synthetic.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import unicodedata
+from collections import defaultdict
+from dataclasses import dataclass, field, fields, is_dataclass
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+
+PIPELINE_VERSION = "0.1.0-cloudint-defensive-safe-demo"
+
+
+# =====================================================================
+# ENUMS
+# =====================================================================
+
+class Status(str, Enum):
+    SUCCEEDED = "SUCCEEDED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    INCONCLUSIVE = "INCONCLUSIVE"
+    PROVIDER_UNRESOLVED = "PROVIDER_UNRESOLVED"
+    TENANT_UNRESOLVED = "TENANT_UNRESOLVED"
+    RESOURCE_UNRESOLVED = "RESOURCE_UNRESOLVED"
+    IAM_UNRESOLVED = "IAM_UNRESOLVED"
+    EXPOSURE_UNRESOLVED = "EXPOSURE_UNRESOLVED"
+    HISTORICAL_STATE_UNAVAILABLE = "HISTORICAL_STATE_UNAVAILABLE"
+    LOGGING_GAP = "LOGGING_GAP"
+    CSPM_STALE = "CSPM_STALE"
+    BLOCKED_CONFIGURATION = "BLOCKED_CONFIGURATION"
+    BLOCKED_POLICY = "BLOCKED_POLICY"
+    BLOCKED_CROSS_TENANT = "BLOCKED_CROSS_TENANT"
+    HUMAN_REVIEW_REQUIRED = "HUMAN_REVIEW_REQUIRED"
+
+
+class SourceType(str, Enum):
+    CLOUD_NATIVE_INVENTORY = "CLOUD_NATIVE_INVENTORY"
+    CLOUD_NATIVE_CONFIG = "CLOUD_NATIVE_CONFIG"
+    CLOUD_AUDIT_LOG = "CLOUD_AUDIT_LOG"
+    CLOUD_FLOW_LOG = "CLOUD_FLOW_LOG"
+    IAM_EXPORT = "IAM_EXPORT"
+    IDENTITY_PROVIDER_EXPORT = "IDENTITY_PROVIDER_EXPORT"
+    CSPM = "CSPM"
+    CNAPP = "CNAPP"
+    VULNERABILITY_SCANNER = "VULNERABILITY_SCANNER"
+    SIEM = "SIEM"
+    EDR = "EDR"
+    PUBLIC_DNS = "PUBLIC_DNS"
+    CERTIFICATE_TRANSPARENCY = "CERTIFICATE_TRANSPARENCY"
+    PROVIDER_DOCUMENTATION = "PROVIDER_DOCUMENTATION"
+    PROVIDER_IP_RANGE = "PROVIDER_IP_RANGE"
+    BILLING_METADATA = "BILLING_METADATA"
+    INCIDENT_REPORT = "INCIDENT_REPORT"
+    SBOM = "SBOM"
+    OTHER = "OTHER"
+
+
+class ResourceState(str, Enum):
+    ACTIVE = "ACTIVE"
+    STOPPED = "STOPPED"
+    SUSPENDED = "SUSPENDED"
+    DELETED = "DELETED"
+    TERMINATED = "TERMINATED"
+    ARCHIVED = "ARCHIVED"
+    UNKNOWN = "UNKNOWN"
+
+
+class Environment(str, Enum):
+    PRODUCTION = "PRODUCTION"
+    STAGING = "STAGING"
+    DEVELOPMENT = "DEVELOPMENT"
+    TEST = "TEST"
+    SANDBOX = "SANDBOX"
+    SECURITY = "SECURITY"
+    SHARED_SERVICES = "SHARED_SERVICES"
+    UNKNOWN = "UNKNOWN"
+
+
+class IdentityType(str, Enum):
+    HUMAN_USER = "HUMAN_USER"
+    FEDERATED_USER = "FEDERATED_USER"
+    SERVICE_ACCOUNT = "SERVICE_ACCOUNT"
+    SERVICE_PRINCIPAL = "SERVICE_PRINCIPAL"
+    MANAGED_IDENTITY = "MANAGED_IDENTITY"
+    WORKLOAD_IDENTITY = "WORKLOAD_IDENTITY"
+    ROLE = "ROLE"
+    GROUP = "GROUP"
+    APPLICATION_IDENTITY = "APPLICATION_IDENTITY"
+    MACHINE_IDENTITY = "MACHINE_IDENTITY"
+    UNKNOWN = "UNKNOWN"
+
+
+class VerificationState(str, Enum):
+    REPORTED = "REPORTED"
+    PARTIALLY_SUPPORTED = "PARTIALLY_SUPPORTED"
+    SUPPORTED = "SUPPORTED"
+    DISPUTED = "DISPUTED"
+    INCONCLUSIVE = "INCONCLUSIVE"
+    UNSUPPORTED = "UNSUPPORTED"
+    RETRACTED = "RETRACTED"
+
+
+class FindingType(str, Enum):
+    RESOURCE_EXISTS = "RESOURCE_EXISTS"
+    RESOURCE_STATE = "RESOURCE_STATE"
+    CONFIGURATION_STATE = "CONFIGURATION_STATE"
+    PUBLIC_ENDPOINT_CANDIDATE = "PUBLIC_ENDPOINT_CANDIDATE"
+    PUBLIC_SERVICE_CONFIRMED = "PUBLIC_SERVICE_CONFIRMED"
+    PUBLIC_ACCESS_CONFIGURATION_CANDIDATE = "PUBLIC_ACCESS_CONFIGURATION_CANDIDATE"
+    ANONYMOUS_ACCESS_SUPPORTED = "ANONYMOUS_ACCESS_SUPPORTED"
+    SENSITIVE_DATA_EXPOSURE = "SENSITIVE_DATA_EXPOSURE"
+    DATA_ACCESS_OBSERVED = "DATA_ACCESS_OBSERVED"
+    EXFILTRATION_CANDIDATE = "EXFILTRATION_CANDIDATE"
+    IAM_POLICY_OBSERVED = "IAM_POLICY_OBSERVED"
+    IAM_EFFECTIVE_ACCESS_CANDIDATE = "IAM_EFFECTIVE_ACCESS_CANDIDATE"
+    PRIVILEGED_IDENTITY_CANDIDATE = "PRIVILEGED_IDENTITY_CANDIDATE"
+    TRUST_RELATIONSHIP_OBSERVED = "TRUST_RELATIONSHIP_OBSERVED"
+    MISCONFIGURATION_CANDIDATE = "MISCONFIGURATION_CANDIDATE"
+    MISCONFIGURATION_SUPPORTED = "MISCONFIGURATION_SUPPORTED"
+    BENCHMARK_DEVIATION = "BENCHMARK_DEVIATION"
+    CSPM_FINDING_REPORTED = "CSPM_FINDING_REPORTED"
+    CSPM_STALE = "CSPM_STALE"
+    LOGGING_GAP = "LOGGING_GAP"
+    BACKUP_RISK = "BACKUP_RISK"
+    ENCRYPTION_CONTEXT = "ENCRYPTION_CONTEXT"
+    VULNERABILITY_CONTEXT = "VULNERABILITY_CONTEXT"
+    SUPPLY_CHAIN_CONTEXT = "SUPPLY_CHAIN_CONTEXT"
+    INCIDENT_SIGNAL = "INCIDENT_SIGNAL"
+    BREACH_CONTEXT = "BREACH_CONTEXT"
+    COST_ANOMALY_CONTEXT = "COST_ANOMALY_CONTEXT"
+    SHARED_RESPONSIBILITY_CONTEXT = "SHARED_RESPONSIBILITY_CONTEXT"
+
+
+class RiskDimension(str, Enum):
+    IDENTITY_RISK = "IDENTITY_RISK"
+    NETWORK_EXPOSURE = "NETWORK_EXPOSURE"
+    DATA_EXPOSURE = "DATA_EXPOSURE"
+    CONFIGURATION_RISK = "CONFIGURATION_RISK"
+    VULNERABILITY_RISK = "VULNERABILITY_RISK"
+    SECRET_RISK = "SECRET_RISK"
+    LOGGING_GAP = "LOGGING_GAP"
+    BACKUP_RISK = "BACKUP_RISK"
+    RESILIENCE_RISK = "RESILIENCE_RISK"
+    SUPPLY_CHAIN_RISK = "SUPPLY_CHAIN_RISK"
+    INCIDENT_RISK = "INCIDENT_RISK"
+    EVIDENCE_CONFIDENCE = "EVIDENCE_CONFIDENCE"
+
+
+class HypothesisStatus(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    PROBABLE = "PROBABLE"
+    POSSIBLE = "POSSIBLE"
+    UNRESOLVED = "UNRESOLVED"
+    DISPUTED = "DISPUTED"
+    REJECTED = "REJECTED"
+
+
+class GapType(str, Enum):
+    TENANT_UNRESOLVED = "TENANT_UNRESOLVED"
+    RESOURCE_UNRESOLVED = "RESOURCE_UNRESOLVED"
+    OWNERSHIP_UNCLEAR = "OWNERSHIP_UNCLEAR"
+    ENVIRONMENT_UNKNOWN = "ENVIRONMENT_UNKNOWN"
+    EFFECTIVE_PERMISSION_UNRESOLVED = "EFFECTIVE_PERMISSION_UNRESOLVED"
+    CROSS_ACCOUNT_TRUST_UNCLEAR = "CROSS_ACCOUNT_TRUST_UNCLEAR"
+    PUBLIC_EXPOSURE_UNCERTAIN = "PUBLIC_EXPOSURE_UNCERTAIN"
+    DATA_CLASSIFICATION_UNKNOWN = "DATA_CLASSIFICATION_UNKNOWN"
+    LOGGING_COVERAGE_MISSING = "LOGGING_COVERAGE_MISSING"
+    HISTORICAL_CONFIG_UNAVAILABLE = "HISTORICAL_CONFIG_UNAVAILABLE"
+    DEPLOYED_VERSION_UNKNOWN = "DEPLOYED_VERSION_UNKNOWN"
+    CSPM_FINDING_STALE = "CSPM_FINDING_STALE"
+    SHARED_RESPONSIBILITY_UNCLEAR = "SHARED_RESPONSIBILITY_UNCLEAR"
+    RESOURCE ERA_UNRESOLVED = "RESOURCE_ERA_UNRESOLVED"
+    BUSINESS_OWNER_UNKNOWN = "BUSINESS_OWNER_UNKNOWN"
+    DATA_RESIDENCY_UNCERTAIN = "DATA_RESIDENCY_UNCERTAIN"
+    SOURCE_INDEPENDENCE_GAP = "SOURCE_INDEPENDENCE_GAP"
+    VULNERABILITY_APPLICABILITY_UNKNOWN = "VULNERABILITY_APPLICABILITY_UNKNOWN"
+    BACKUP_RESTORABILITY_UNKNOWN = "BACKUP_RESTORABILITY_UNKNOWN"
+
+
+class PrivacyFlag(str, Enum):
+    CASE_SCOPED = "CASE_SCOPED"
+    AUTHORIZED_TENANT_ONLY = "AUTHORIZED_TENANT_ONLY"
+    NO_CROSS_TENANT_ACCESS = "NO_CROSS_TENANT_ACCESS"
+    NO_CREDENTIAL_USE = "NO_CREDENTIAL_USE"
+    NO_BUCKET_ABUSE = "NO_BUCKET_ABUSE"
+    NO_PRIVATE_OBJECT_DOWNLOAD = "NO_PRIVATE_OBJECT_DOWNLOAD"
+    NO_IAM_MODIFICATION = "NO_IAM_MODIFICATION"
+    NO_LOG_DELETION = "NO_LOG_DELETION"
+    NO_ACTIVE_PROBING = "NO_ACTIVE_PROBING"
+    NO_METADATA_EXPLOITATION = "NO_METADATA_EXPLOITATION"
+
+
+class PolicyFlag(str, Enum):
+    NONE = "NONE"
+    BLOCKED_REQUEST = "BLOCKED_REQUEST"
+    HUMAN_REVIEW_REQUIRED = "HUMAN_REVIEW_REQUIRED"
+    DEFENSIVE_ONLY = "DEFENSIVE_ONLY"
+    PASSIVE_FIRST = "PASSIVE_FIRST"
+
+
+class RecommendationApproval(str, Enum):
+    AUTONOMOUS_ANALYTIC = "AUTONOMOUS_ANALYTIC"
+    HUMAN_APPROVAL_REQUIRED = "HUMAN_APPROVAL_REQUIRED"
+    OPERATIONAL_CHANGE_APPROVAL_REQUIRED = "OPERATIONAL_CHANGE_APPROVAL_REQUIRED"
+
+
+# =====================================================================
+# CONSTANTS
+# =====================================================================
+
+DIRECT_SOURCE_FACTOR: Dict[SourceType, float] = {
+    SourceType.CLOUD_NATIVE_INVENTORY: 0.95,
+    SourceType.CLOUD_NATIVE_CONFIG: 0.95,
+    SourceType.CLOUD_AUDIT_LOG: 0.93,
+    SourceType.CLOUD_FLOW_LOG: 0.88,
+    SourceType.IAM_EXPORT: 0.94,
+    SourceType.IDENTITY_PROVIDER_EXPORT: 0.90,
+    SourceType.CSPM: 0.68,
+    SourceType.CNAPP: 0.70,
+    SourceType.VULNERABILITY_SCANNER: 0.72,
+    SourceType.SIEM: 0.65,
+    SourceType.EDR: 0.75,
+    SourceType.PUBLIC_DNS: 0.78,
+    SourceType.CERTIFICATE_TRANSPARENCY: 0.72,
+    SourceType.PROVIDER_DOCUMENTATION: 0.85,
+    SourceType.PROVIDER_IP_RANGE: 0.90,
+    SourceType.BILLING_METADATA: 0.82,
+    SourceType.INCIDENT_REPORT: 0.70,
+    SourceType.SBOM: 0.75,
+    SourceType.OTHER: 0.65,
+}
+
+PROHIBITED_PATTERNS: List[Tuple[str, re.Pattern[str]]] = [
+    (
+        "CLOUD_CREDENTIAL_USE",
+        re.compile(
+            r"\b(use|test|validate|redeem|exploit|abuse)\s+(cloud\s+)?(key|credential|token|secret|"
+            r"access[_ ]key|service[_ ]account[_ ]key|client[_ ]secret)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "ROLE_ASSUME_without_AUTH",
+        re.compile(
+            r"\b(assume|switch[_ ]to|take[_ ]over)\s+(role|identity|tenant|account)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "IAM_BYPASS_OR_ESCALATION",
+        re.compile(
+            r"\b(bypass|evade|circumvent)\s+(iam|mfa|sso|permission|policy|access[_ ]control)\b|"
+            r"\bprivilege[_ ]escalation\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "CROSS_TENANT_ACCESS",
+        re.compile(
+            r"\b(cross[_ ]tenant|other[_ ]tenant|unrelated[_ ]tenant|enumerate[_ ]tenants|"
+            r"access[_ ]another[_ ]account)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "BUCKET_ABUSE",
+        re.compile(
+            r"\b(list|download|upload|modify|write|enum)erate?\s+(bucket|object|private[_ ]object|"
+            r"storage|s3|blob|container)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "METADATA_SSRF_EXPLOITATION",
+        re.compile(
+            r"\b(exploit|abuse|access)\s+(metadata|instance[_ ]metadata|ssrf|169\.254\.169\.254)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "CLOUD_MODIFICATION",
+        re.compile(
+            r"\b(modify|create|delete|disable|open|close|change)\s+"
+            r"(iam|policy|role|key|firewall|security[_ ]group|port|logging|log|bucket|acl|workload|"
+            r"container|kubernetes|rbac|snapshot|backup)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "UNAUTHORIZED_SCANNING",
+        re.compile(
+            r"\b(unauthorized|silent|covert)\s+(scan|probe|enumerate|fingerprint)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "MALWARE_OR_DISRUPTION",
+        re.compile(
+            r"\b(deploy|install)\s+(malware|ransomware|cryptominer|backdoor|persistence)\b|"
+            r"\bcause\s+(service\s+)?disruption\b",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+
+# =====================================================================
+# UTILITIES
+# =====================================================================
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def new_id(prefix: str, seed: str) -> str:
+    h = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:10]
+    return f"{prefix}{h}" if prefix else h
+
+
+def stable_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def sha256_short(text: str) -> str:
+    return stable_hash(text)[:16]
+
+
+def jsonable(obj: Any) -> Any:
+    if isinstance(obj, Enum):
+        return obj.value
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {f.name: jsonable(getattr(obj, f.name)) for f in fields(obj)}
+    if isinstance(obj, (list, tuple, set)):
+        return [jsonable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {str(k): jsonable(v) for k, v in obj.items()}
+    return obj
+
+
+def normalize_text(value: str) -> str:
+    s = unicodedata.normalize("NFKC", value or "")
+    s = s.lower().strip()
+    s = re.sub(r"[^\w\s\-'.:/@]", " ", s)
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def parse_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def dt_or_min(value: Optional[str]) -> datetime:
+    dt = parse_dt(value)
+    return dt if dt else datetime.min.replace(tzinfo=timezone.utc)
+
+
+def dt_or_max(value: Optional[str]) -> datetime:
+    dt = parse_dt(value)
+    return dt if dt else datetime.max.replace(tzinfo=timezone.utc)
+
+
+def overlaps(
+    start_a: Optional[str],
+    end_a: Optional[str],
+    start_b: Optional[str],
+    end_b: Optional[str],
+) -> bool:
+    a_s = parse_dt(start_a)
+    a_e = parse_dt(end_a) or a_s
+    b_s = parse_dt(start_b)
+    b_e = parse_dt(end_b) or b_s
+
+    if not a_s or not b_s:
+        return True
+
+    if a_e and b_s and a_e < b_s:
+        return False
+    if b_e and a_s and b_e < a_s:
+        return False
+    return True
+
+
+def policy_guard(text: str) -> List[Dict[str, str]]:
+    violations: List[Dict[str, str]] = []
+    for rule, rx in PROHIBITED_PATTERNS:
+        m = rx.search(text or "")
+        if m:
+            violations.append({"rule": rule, "matched": m.group(0)})
+    return violations
+
+
+# =====================================================================
+# DATACLASSES
+# =====================================================================
+
+@dataclass
+class Source:
+    id: str
+    title: str
+    url: str
+    source_type: SourceType
+    independence_group: str = "UNKNOWN"
+    reliability: float = 0.5
+    derived_from: Optional[str] = None
+    published_at: Optional[str] = None
+    retrieved_at: Optional[str] = None
+    effective_at: Optional[str] = None
+    notes: str = ""
+
+
+@dataclass
+class Evidence:
+    id: str
+    source_id: str
+    artifact_type: str
+    excerpt: str
+    observed_at: Optional[str] = None
+    effective_at: Optional[str] = None
+    content_hash: str = ""
+    parsed_fields: Dict[str, Any] = field(default_factory=dict)
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Resource:
+    id: str
+    provider: str
+    tenant_id: str
+    account_id: str
+    subscription_id: Optional[str] = None
+    project_id: Optional[str] = None
+    resource_group: Optional[str] = None
+    resource_type: str = ""
+    name: str = ""
+    region: Optional[str] = None
+    zone: Optional[str] = None
+    environment: Environment = Environment.UNKNOWN
+    state: ResourceState = ResourceState.UNKNOWN
+    owner_candidate: Optional[str] = None
+    business_owner: Optional[str] = None
+    technical_owner: Optional[str] = None
+    data_owner: Optional[str] = None
+    data_classification_candidate: Optional[str] = None
+    tags: Dict[str, str] = field(default_factory=dict)
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ConfigSnapshot:
+    id: str
+    resource_id: str
+    config_type: str
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    observed_at: Optional[str] = None
+    source_id: str = ""
+    evidence_id: str = ""
+    parser_version: str = "cloud-config-parser-0.1"
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Identity:
+    id: str
+    provider: str
+    tenant_id: str
+    account_id: str
+    identity_type: IdentityType
+    display_name: str
+    principal_id: Optional[str] = None
+    enabled: bool = True
+    created_at: Optional[str] = None
+    last_used_at: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class PolicyStatement:
+    effect: str = "Allow"
+    actions: List[str] = field(default_factory=list)
+    resources: List[str] = field(default_factory=list)
+    conditions: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Policy:
+    id: str
+    provider: str
+    account_id: str
+    policy_name: str
+    policy_type: str = "IDENTITY_POLICY"
+    statements: List[PolicyStatement] = field(default_factory=list)
+    attached_to: List[str] = field(default_factory=list)
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    source_id: str = ""
+    evidence_id: str = ""
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Role:
+    id: str
+    provider: str
+    account_id: str
+    role_name: str
+    role_arn_like: str = ""
+    trust_policy_id: Optional[str] = None
+    attached_policy_ids: List[str] = field(default_factory=list)
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class RoleAttachment:
+    id: str
+    identity_id: str
+    role_id: str
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class TrustRelationship:
+    id: str
+    from_identity_id: str
+    to_role_id: str
+    trust_type: str
+    conditions: Dict[str, Any] = field(default_factory=dict)
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SecurityGroupRule:
+    id: str
+    security_group_id: str
+    direction: str
+    protocol: str
+    port_range: str
+    source_cidr: Optional[str] = None
+    destination_cidr: Optional[str] = None
+    action: str = "ALLOW"
+    description: str = ""
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class NetworkEndpoint:
+    id: str
+    resource_id: str
+    endpoint_type: str
+    public: bool = False
+    ip: Optional[str] = None
+    dns_name: Optional[str] = None
+    load_balancer_id: Optional[str] = None
+    target_resource_ids: List[str] = field(default_factory=list)
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CSPMFinding:
+    id: str
+    resource_id: str
+    rule_id: str
+    severity: str
+    status: str
+    statement: str
+    effective_at: Optional[str] = None
+    retrieved_at: Optional[str] = None
+    source_id: str = ""
+    evidence_id: str = ""
+    derived_from_native_config: bool = False
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class AuditEvent:
+    id: str
+    provider: str
+    account_id: str
+    event_name: str
+    actor_identity_id: Optional[str] = None
+    actor_type: Optional[str] = None
+    resource_id: Optional[str] = None
+    source_ip: Optional[str] = None
+    auth_type: Optional[str] = None
+    status: Optional[str] = None
+    event_time: Optional[str] = None
+    request_id: Optional[str] = None
+    data_plane: bool = False
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FlowEvent:
+    id: str
+    src_ip: str
+    dst_ip: str
+    dst_port: str
+    protocol: str
+    bytes_transferred: Optional[int] = None
+    action: str = "ACCEPT"
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    resource_id: Optional[str] = None
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Finding:
+    id: str
+    finding_type: FindingType
+    subject_id: str
+    statement: str
+    risk_dimension: str
+    verification_state: VerificationState = VerificationState.INCONCLUSIVE
+    confidence: float = 0.0
+    source_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    effective_at: Optional[str] = None
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    limitations: List[str] = field(default_factory=list)
+    specialist_handoff: Optional[str] = None
+
+
+@dataclass
+class Hypothesis:
+    id: str
+    statement: str
+    kind: str
+    supporting_event_ids: List[str] = field(default_factory=list)
+    supporting_evidence_ids: List[str] = field(default_factory=list)
+    contradicting_evidence_ids: List[str] = field(default_factory=list)
+    assumptions: List[str] = field(default_factory=list)
+    predictions: List[str] = field(default_factory=list)
+    falsification_conditions: List[str] = field(default_factory=list)
+    status: HypothesisStatus = HypothesisStatus.UNRESOLVED
+    confidence: float = 0.0
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Contradiction:
+    id: str
+    contradiction_type: str
+    description: str
+    resource_ids: List[str] = field(default_factory=list)
+    finding_ids: List[str] = field(default_factory=list)
+    source_ids: List[str] = field(default_factory=list)
+    severity: str = "MEDIUM"
+    status: str = "OPEN"
+    recommended_resolution: str = ""
+
+
+@dataclass
+class KnowledgeGap:
+    id: str
+    gap_type: GapType
+    description: str
+    about_resource_ids: List[str] = field(default_factory=list)
+    about_finding_ids: List[str] = field(default_factory=list)
+    importance: str = "MEDIUM"
+    recommended_source: str = ""
+    specialist: Optional[str] = None
+    expected_information_value: float = 0.0
+
+
+@dataclass
+class NextAction:
+    id: str
+    description: str
+    priority: int = 1
+    privacy_impact: str = "LOW_IF_AUTHORIZED"
+    expected_gain: float = 0.0
+    specialist: Optional[str] = None
+    requires_human_approval: bool = False
+
+
+@dataclass
+class Recommendation:
+    id: str
+    category: str
+    action: str
+    target: str
+    rationale: str
+    evidence_ids: List[str] = field(default_factory=list)
+    finding_ids: List[str] = field(default_factory=list)
+    approval: RecommendationApproval = RecommendationApproval.HUMAN_APPROVAL_REQUIRED
+    business_impact: str = "REQUIRES_OPERATIONAL_REVIEW"
+    reversibility: str = "REQUIRES_VALIDATION"
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Case:
+    case_id: str
+    task_id: str
+    objective: str
+    questions: List[str] = field(default_factory=list)
+    scope: List[str] = field(default_factory=lambda: ["authorized_defensive_cloud", "passive_first", "case_scoped"])
+    authorization: str = "demo_authorized_cloud_intelligence"
+    provider: Optional[str] = None
+    tenant_id: Optional[str] = None
+    account_id: Optional[str] = None
+    subscription_id: Optional[str] = None
+    project_id: Optional[str] = None
+    resources: List[str] = field(default_factory=list)
+    time_range: Optional[str] = None
+    sample: bool = False
+    budget: Optional[str] = None
+    deadline: Optional[str] = None
+
+
+# =====================================================================
+# CLOUDINT ENGINE
+# =====================================================================
+
+class CloudInt:
+    def __init__(self, case: Case) -> None:
+        self.case = case
+        self.sources: Dict[str, Source] = {}
+        self.evidence: Dict[str, Evidence] = {}
+        self.resources: Dict[str, Resource] = {}
+        self.config_snapshots: Dict[str, ConfigSnapshot] = {}
+        self.identities: Dict[str, Identity] = {}
+        self.roles: Dict[str, Role] = {}
+        self.policies: Dict[str, Policy] = {}
+        self.role_attachments: Dict[str, RoleAttachment] = {}
+        self.trust_relationships: Dict[str, TrustRelationship] = {}
+        self.security_group_rules: Dict[str, SecurityGroupRule] = {}
+        self.network_endpoints: Dict[str, NetworkEndpoint] = {}
+        self.cspm_findings: Dict[str, CSPMFinding] = {}
+        self.audit_events: Dict[str, AuditEvent] = {}
+        self.flow_events: Dict[str, FlowEvent] = {}
+        self.findings: Dict[str, Finding] = {}
+        self.hypotheses: List[Hypothesis] = []
+        self.contradictions: List[Contradiction] = []
+        self.gaps: List[KnowledgeGap] = []
+        self.actions: List[NextAction] = []
+        self.recommendations: List[Recommendation] = []
+        self.handoffs: List[Dict[str, str]] = []
+        self.risk_dimensions: Dict[str, str] = {}
+        self.validation_errors: List[str] = []
+
+    # -----------------------------------------------------------------
+    # Adders
+    # -----------------------------------------------------------------
+
+    def add_source(self, source: Source) -> Source:
+        self.sources[source.id] = source
+        return source
+
+    def add_evidence(self, evidence: Evidence) -> Evidence:
+        if not evidence.content_hash:
+            seed = "|".join([evidence.source_id, evidence.artifact_type, evidence.excerpt])
+            evidence.content_hash = stable_hash(seed)
+        self.evidence[evidence.id] = evidence
+        return evidence
+
+    def add_resource(self, resource: Resource) -> Resource:
+        self.resources[resource.id] = resource
+        return resource
+
+    def add_config_snapshot(self, snapshot: ConfigSnapshot) -> ConfigSnapshot:
+        self.config_snapshots[snapshot.id] = snapshot
+        return snapshot
+
+    def add_identity(self, identity: Identity) -> Identity:
+        self.identities[identity.id] = identity
+        return identity
+
+    def add_role(self, role: Role) -> Role:
+        self.roles[role.id] = role
+        return role
+
+    def add_policy(self, policy: Policy) -> Policy:
+        self.policies[policy.id] = policy
+        return policy
+
+    def add_role_attachment(self, attachment: RoleAttachment) -> RoleAttachment:
+        self.role_attachments[attachment.id] = attachment
+        return attachment
+
+    def add_trust_relationship(self, trust: TrustRelationship) -> TrustRelationship:
+        self.trust_relationships[trust.id] = trust
+        return trust
+
+    def add_security_group_rule(self, rule: SecurityGroupRule) -> SecurityGroupRule:
+        self.security_group_rules[rule.id] = rule
+        return rule
+
+    def add_network_endpoint(self, endpoint: NetworkEndpoint) -> NetworkEndpoint:
+        self.network_endpoints[endpoint.id] = endpoint
+        return endpoint
+
+    def add_cspm_finding(self, finding: CSPMFinding) -> CSPMFinding:
+        self.cspm_findings[finding.id] = finding
+        return finding
+
+    def add_audit_event(self, event: AuditEvent) -> AuditEvent:
+        self.audit_events[event.id] = event
+        return event
+
+    def add_flow_event(self, event: FlowEvent) -> FlowEvent:
+        self.flow_events[event.id] = event
+        return event
+
+    def add_finding(self, finding: Finding) -> Finding:
+        self.findings[finding.id] = finding
+        return finding
+
+    # -----------------------------------------------------------------
+    # Source lineage / independence
+    # -----------------------------------------------------------------
+
+    def get_source_family(self, source_id: str) -> Optional[str]:
+        src = self.sources.get(source_id)
+        if not src:
+            return None
+        seen: Set[str] = set()
+        cur = src
+        while (
+            cur
+            and cur.derived_from
+            and cur.derived_from in self.sources
+            and cur.id not in seen
+        ):
+            seen.add(cur.id)
+            cur = self.sources[cur.derived_from]
+        return cur.id if cur else source_id
+
+    def source_families(self, source_ids: List[str]) -> Set[str]:
+        families: Set[str] = set()
+        for sid in source_ids:
+            fam = self.get_source_family(sid)
+            families.add(fam or sid)
+        return families
+
+    def independence_state(self, source_ids: List[str]) -> str:
+        if not source_ids:
+            return "UNKNOWN"
+        families = self.source_families(source_ids)
+        if len(source_ids) == 1:
+            return "SINGLE_SOURCE"
+        if len(families) == 1:
+            return "DEPENDENT"
+        if len(families) == len(source_ids):
+            return "INDEPENDENT"
+        return "PARTIALLY_DEPENDENT"
+
+    # -----------------------------------------------------------------
+    # Temporal configuration
+    # -----------------------------------------------------------------
+
+    def config_at(
+        self,
+        resource_id: str,
+        timestamp: Optional[str],
+        config_type: Optional[str] = None,
+    ) -> Optional[ConfigSnapshot]:
+        ts = parse_dt(timestamp) or datetime.now(timezone.utc)
+        candidates: List[ConfigSnapshot] = []
+        for snap in self.config_snapshots.values():
+            if snap.resource_id != resource_id:
+                continue
+            if config_type and snap.config_type != config_type:
+                continue
+            vf = parse_dt(snap.valid_from)
+            vt = parse_dt(snap.valid_to)
+            if vf and vf > ts:
+                continue
+            if vt and vt < ts:
+                continue
+            candidates.append(snap)
+
+        if not candidates:
+            return None
+
+        return max(candidates, key=lambda c: dt_or_min(c.valid_from))
+
+    def config_history(self, resource_id: str, config_type: Optional[str] = None) -> List[ConfigSnapshot]:
+        items = [
+            s for s in self.config_snapshots.values()
+            if s.resource_id == resource_id and (not config_type or s.config_type == config_type)
+        ]
+        return sorted(items, key=lambda s: dt_or_min(s.valid_from))
+
+    # -----------------------------------------------------------------
+    # IAM helpers (defensive, non-operational)
+    # -----------------------------------------------------------------
+
+    def identity_has_role(self, identity_id: str, role_id: str, at: Optional[str] = None) -> bool:
+        for att in self.role_attachments.values():
+            if att.identity_id == identity_id and att.role_id == role_id:
+                if overlaps(att.valid_from, att.valid_to, at, at):
+                    return True
+        return False
+
+    def trust_exists(self, identity_id: str, role_id: str, at: Optional[str] = None) -> bool:
+        for tr in self.trust_relationships.values():
+            if tr.from_identity_id == identity_id and tr.to_role_id == role_id:
+                if overlaps(tr.valid_from, tr.valid_to, at, at):
+                    return True
+        return False
+
+    def role_policies(self, role_id: str) -> List[Policy]:
+        role = self.roles.get(role_id)
+        if not role:
+            return []
+        return [self.policies[pid] for pid in role.attached_policy_ids if pid in self.policies]
+
+    def policy_allows_action_on_resource(self, policy: Policy, action: str, resource_id: str) -> bool:
+        # Very conservative deterministic substring/action matching for demo.
+        # Real implementation must use provider-specific IAM policy evaluator.
+        for stmt in policy.statements:
+            if stmt.effect.lower() != "allow":
+                continue
+            action_match = any(a == "*" or a.endswith(f":{action}") or action in a for a in stmt.actions)
+            resource_match = any(
+                r == "*" or resource_id.lower() in r.lower() or normalize_text(resource_id) in normalize_text(r)
+                for r in stmt.resources
+            )
+            if action_match and resource_match:
+                return True
+        return False
+
+    def has_wildcard_admin_pattern(self, policy: Policy) -> bool:
+        for stmt in policy.statements:
+            if stmt.effect.lower() != "allow":
+                continue
+            if "*" in stmt.actions and "*" in stmt.resources:
+                return True
+        return False
+
+    # -----------------------------------------------------------------
+    # Network helpers
+    # -----------------------------------------------------------------
+
+    def internet_ingress_allowed(self, resource_id: str, at: Optional[str] = None) -> bool:
+        # Demo heuristic: endpoint public + SG rule allows 0.0.0.0/0 inbound.
+        for ep in self.network_endpoints.values():
+            if ep.resource_id != resource_id and ep.load_balancer_id != resource_id:
+                continue
+            if not ep.public:
+                continue
+            if not overlaps(ep.valid_from, ep.valid_to, at, at):
+                continue
+            for rule in self.security_group_rules.values():
+                if rule.direction.lower() != "ingress":
+                    continue
+                if rule.action.upper() != "ALLOW":
+                    continue
+                if rule.source_cidr in {"0.0.0.0/0", "::/0"}:
+                    if overlaps(rule.valid_from, rule.valid_to, at, at):
+                        return True
+        return False
+
+    # -----------------------------------------------------------------
+    # Evidence helpers
+    # -----------------------------------------------------------------
+
+    def has_successful_anonymous_data_plane_event(self, resource_id: str) -> bool:
+        for ev in self.audit_events.values():
+            if ev.resource_id != resource_id:
+                continue
+            if not ev.data_plane:
+                continue
+            if ev.auth_type and ev.auth_type.upper() in {"ANONYMOUS", "UNAUTHENTICATED", "PUBLIC"}:
+                if ev.status and ev.status.upper() in {"SUCCESS", "SUCCESSFUL", "200", "ALLOW", "ALLOWED"}:
+                    return True
+        return False
+
+    def has_data_classification_metadata(self, resource_id: str) -> bool:
+        res = self.resources.get(resource_id)
+        if not res:
+            return False
+        return bool(res.data_classification_candidate)
+
+    def has_approved_public_exception(self, resource_id: str) -> bool:
+        res = self.resources.get(resource_id)
+        if not res:
+            return False
+        return res.tags.get("public_access_exception") == "APPROVED"
+
+    # -----------------------------------------------------------------
+    # Contradictions
+    # -----------------------------------------------------------------
+
+    def detect_contradictions(self) -> None:
+        existing = {c.description for c in self.contradictions}
+
+        for cspm in self.cspm_findings.values():
+            statement_norm = normalize_text(cspm.statement)
+            claims_public = "public" in statement_norm or "anonymous" in statement_norm
+            if not claims_public:
+                continue
+
+            current_cfg = self.config_at(cspm.resource_id, cspm.retrieved_at, "STORAGE_ACCESS")
+            if not current_cfg:
+                continue
+
+            current_public = bool(current_cfg.attributes.get("public_read"))
+            if current_public:
+                continue
+
+            desc = (
+                f"CSPM finding {cspm.id} reports public/anonymous access for {cspm.resource_id}, "
+                f"but native configuration effective at retrieval time {cspm.retrieved_at} indicates private access. "
+                "This is consistent with a stale CSPM result or configuration change after scanner evaluation."
+            )
+            if desc in existing:
+                continue
+
+            self.contradictions.append(Contradiction(
+                id=new_id("CON-", desc),
+                contradiction_type="CSPM_STALE_VS_NATIVE_CONFIG",
+                description=desc,
+                resource_ids=[cspm.resource_id],
+                finding_ids=[fid for fid, f in self.findings.items() if f.subject_id == cspm.resource_id and f.finding_type == FindingType.CSPM_STALE],
+                source_ids=sorted({cspm.source_id, current_cfg.source_id}),
+                severity="MEDIUM",
+                status="OPEN",
+                recommended_resolution=(
+                    "Use native configuration history as authoritative for temporal state; treat CSPM as derived/stale "
+                    "unless independently re-evaluated."
+                ),
+            ))
+            existing.add(desc)
+
+        # Owner tag vs technical owner mismatch, if present.
+        for res in self.resources.values():
+            tag_owner = res.tags.get("owner")
+            tech_owner = res.technical_owner
+            if tag_owner and tech_owner and normalize_text(tag_owner) != normalize_text(tech_owner):
+                desc = (
+                    f"Resource {res.id} has owner tag '{tag_owner}' but authorized inventory technical owner "
+                    f"'{tech_owner}'. Tags are metadata claims and do not independently prove ownership."
+                )
+                if desc in existing:
+                    continue
+                self.contradictions.append(Contradiction(
+                    id=new_id("CON-", desc),
+                    contradiction_type="OWNER_TAG_CONFLICT",
+                    description=desc,
+                    resource_ids=[res.id],
+                    source_ids=sorted(set(res.source_ids)),
+                    severity="LOW",
+                    status="OPEN",
+                    recommended_resolution="Resolve owner through authorized CMDB/inventory/process records, not tag alone.",
+                ))
+                existing.add(desc)
+
+    # -----------------------------------------------------------------
+    # Fact gate
+    # -----------------------------------------------------------------
+
+    def fact_gate_findings(self) -> None:
+        for f in self.findings.values():
+            srcs = [self.sources[sid] for sid in f.source_ids if sid in self.sources]
+            if not srcs:
+                f.confidence = 0.0
+                f.verification_state = VerificationState.UNSUPPORTED
+                f.limitations.append("No mapped source.")
+                continue
+
+            families = self.source_families(f.source_ids)
+            max_rel = max((s.reliability for s in srcs), default=0.5)
+            direct = max((DIRECT_SOURCE_FACTOR.get(s.source_type, 0.65) for s in srcs), default=0.65)
+            base = max_rel * direct
+
+            if len(families) >= 2:
+                base = min(0.99, base * 1.05)
+            elif len(families) == 1 and len(f.source_ids) > 1:
+                base *= 0.90
+                f.limitations.append("Multiple sources share one upstream source family.")
+
+            # Semantic guards.
+            if f.finding_type == FindingType.RESOURCE_EXISTS:
+                if base >= 0.70:
+                    f.verification_state = VerificationState.SUPPORTED
+                else:
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED
+                f.limitations.append("Resource identity is anchored to provider-native resource ID, not display name.")
+
+            elif f.finding_type in {
+                FindingType.CONFIGURATION_STATE,
+                FindingType.RESOURCE_STATE,
+            }:
+                if base >= 0.75:
+                    f.verification_state = VerificationState.SUPPORTED
+                else:
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED
+                f.limitations.append("Configuration state is time-bound; current state must not contaminate historical analysis.")
+
+            elif f.finding_type == FindingType.PUBLIC_ACCESS_CONFIGURATION_CANDIDATE:
+                cfg = self.config_at(f.subject_id, f.effective_at or f.valid_to, "STORAGE_ACCESS")
+                if cfg and cfg.attributes.get("public_read"):
+                    f.verification_state = VerificationState.SUPPORTED if base >= 0.72 else VerificationState.PARTIALLY_SUPPORTED
+                else:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                f.limitations.extend([
+                    "Public-access configuration candidate does not prove objects are publicly readable.",
+                    "Public-access configuration candidate does not prove sensitive data exposure.",
+                    "No bucket listing, object download, or anonymous access test was performed.",
+                ])
+
+            elif f.finding_type == FindingType.SENSITIVE_DATA_EXPOSURE:
+                has_dp = self.has_successful_anonymous_data_plane_event(f.subject_id)
+                has_class = self.has_data_classification_metadata(f.subject_id)
+                if has_dp and has_class and base >= 0.75:
+                    f.verification_state = VerificationState.SUPPORTED
+                elif has_dp or has_class:
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED
+                    base = min(base, 0.55)
+                else:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                    base = min(base, 0.35)
+                f.limitations.extend([
+                    "Sensitive data exposure requires data-plane access evidence and data classification evidence.",
+                    "Public endpoint or public configuration alone is not sensitive data exposure.",
+                    "No private object inspection or bucket abuse was performed.",
+                ])
+
+            elif f.finding_type == FindingType.ANONYMOUS_ACCESS_SUPPORTED:
+                has_dp = self.has_successful_anonymous_data_plane_event(f.subject_id)
+                if has_dp and base >= 0.75:
+                    f.verification_state = VerificationState.SUPPORTED
+                else:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                    base = min(base, 0.40)
+                f.limitations.append("Anonymous access requires successful data-plane evidence; configuration alone is insufficient.")
+
+            elif f.finding_type == FindingType.PUBLIC_ENDPOINT_CANDIDATE:
+                if self.internet_ingress_allowed(f.subject_id, f.effective_at):
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.60 else VerificationState.INCONCLUSIVE
+                else:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                f.limitations.extend([
+                    "Public endpoint candidate does not prove a service is listening.",
+                    "Public endpoint does not prove anonymous access or public data.",
+                    "No active probing was performed.",
+                ])
+
+            elif f.finding_type == FindingType.PUBLIC_SERVICE_CONFIRMED:
+                f.verification_state = VerificationState.INCONCLUSIVE
+                base = min(base, 0.45)
+                f.limitations.append("Public service confirmation requires authorized service/banner/auth evidence; not present in passive demo.")
+
+            elif f.finding_type == FindingType.IAM_POLICY_OBSERVED:
+                f.verification_state = VerificationState.SUPPORTED if base >= 0.75 else VerificationState.PARTIALLY_SUPPORTED
+                f.limitations.append("Observed IAM policy statement is not effective access by itself.")
+
+            elif f.finding_type == FindingType.IAM_EFFECTIVE_ACCESS_CANDIDATE:
+                f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.60 else VerificationState.INCONCLUSIVE
+                base = min(base, 0.72)
+                f.limitations.extend([
+                    "Effective permission depends on identity policy, resource policy, permissions boundary, session policy, conditions, and network controls.",
+                    "IAM policy observation is not effective access proof.",
+                    "No role assumption or credential test was performed.",
+                ])
+
+            elif f.finding_type == FindingType.PRIVILEGED_IDENTITY_CANDIDATE:
+                f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.60 else VerificationState.INCONCLUSIVE
+                base = min(base, 0.68)
+                f.limitations.extend([
+                    "Role name 'admin' does not prove administrator privilege.",
+                    "Wildcard policy may be constrained by conditions, boundaries, or resource scope.",
+                    "No privilege escalation path was operationalized.",
+                ])
+
+            elif f.finding_type == FindingType.TRUST_RELATIONSHIP_OBSERVED:
+                f.verification_state = VerificationState.SUPPORTED if base >= 0.75 else VerificationState.PARTIALLY_SUPPORTED
+                f.limitations.append("Trust relationship does not prove successful role assumption or effective access.")
+
+            elif f.finding_type in {
+                FindingType.MISCONFIGURATION_CANDIDATE,
+                FindingType.MISCONFIGURATION_SUPPORTED,
+                FindingType.BENCHMARK_DEVIATION,
+            }:
+                if self.has_approved_public_exception(f.subject_id):
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED
+                    f.limitations.append("Authorized exception may explain deviation; accepted risk should not be marked fixed.")
+                elif f.finding_type == FindingType.BENCHMARK_DEVIATION:
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.65 else VerificationState.INCONCLUSIVE
+                else:
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.68 else VerificationState.INCONCLUSIVE
+                f.limitations.extend([
+                    "Benchmark deviation is not automatically exploitable vulnerability.",
+                    "Misconfiguration is not breach without unauthorized access/disclosure evidence.",
+                ])
+
+            elif f.finding_type == FindingType.CSPM_FINDING_REPORTED:
+                f.verification_state = VerificationState.REPORTED
+                base = min(base, 0.65)
+                f.limitations.append("CSPM finding is scanner-reported evidence and may be derived from native configuration.")
+
+            elif f.finding_type == FindingType.CSPM_STALE:
+                contradiction_present = any(
+                    f.subject_id in c.resource_ids and c.contradiction_type == "CSPM_STALE_VS_NATIVE_CONFIG"
+                    for c in self.contradictions
+                )
+                if contradiction_present:
+                    f.verification_state = VerificationState.SUPPORTED
+                else:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                f.limitations.append("Staleness determination uses native configuration history; scanner cache may differ.")
+
+            elif f.finding_type == FindingType.LOGGING_GAP:
+                cfg = self.config_at(f.subject_id, f.effective_at or f.valid_to, "STORAGE_ACCESS")
+                if cfg and cfg.attributes.get("access_logging_enabled") is False:
+                    f.verification_state = VerificationState.SUPPORTED
+                else:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                f.limitations.append("Absence of logs is not absence of events; coverage gap must be reported.")
+
+            elif f.finding_type == FindingType.BACKUP_RISK:
+                f.verification_state = VerificationState.INCONCLUSIVE
+                base = min(base, 0.55)
+                f.limitations.append("Backup existence does not prove restorability; restore-test evidence required.")
+
+            elif f.finding_type == FindingType.ENCRYPTION_CONTEXT:
+                f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.70 else VerificationState.INCONCLUSIVE
+                f.limitations.append("Encryption enabled does not equal zero exposure; key scope and identity controls matter.")
+
+            elif f.finding_type == FindingType.VULNERABILITY_CONTEXT:
+                f.verification_state = VerificationState.INCONCLUSIVE
+                base = min(base, 0.55)
+                f.specialist_handoff = f.specialist_handoff or "VULNINT"
+                f.limitations.append("CVE association does not prove cloud resource vulnerability or exploitability without version/config/reachability evidence.")
+
+            elif f.finding_type == FindingType.SUPPLY_CHAIN_CONTEXT:
+                f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.65 else VerificationState.INCONCLUSIVE
+                f.specialist_handoff = f.specialist_handoff or "SUPPLYCHAININT"
+                f.limitations.append("Dependency mapping is not compromise evidence.")
+
+            elif f.finding_type == FindingType.INCIDENT_SIGNAL:
+                f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.65 else VerificationState.INCONCLUSIVE
+                f.specialist_handoff = f.specialist_handoff or "INCIDENTINT"
+                f.limitations.append("Cloud alert or suspicious API pattern is not confirmed incident.")
+
+            elif f.finding_type == FindingType.BREACH_CONTEXT:
+                f.verification_state = VerificationState.INCONCLUSIVE
+                base = min(base, 0.45)
+                f.specialist_handoff = f.specialist_handoff or "BREACHINT"
+                f.limitations.append("Breach requires unauthorized access/disclosure evidence; misconfiguration alone is not breach.")
+
+            elif f.finding_type == FindingType.COST_ANOMALY_CONTEXT:
+                f.verification_state = VerificationState.PARTIALLY_SUPPORTED if base >= 0.65 else VerificationState.INCONCLUSIVE
+                f.limitations.append("Cost anomaly is not compromise; may be deployment, scaling, experiment, or billing effect.")
+
+            elif f.finding_type == FindingType.SHARED_RESPONSIBILITY_CONTEXT:
+                f.verification_state = VerificationState.SUPPORTED if base >= 0.75 else VerificationState.PARTIALLY_SUPPORTED
+                f.limitations.append("Shared responsibility must be assessed by service model and provider/customer boundary.")
+
+            else:
+                if base >= 0.78:
+                    f.verification_state = VerificationState.SUPPORTED
+                elif base >= 0.60:
+                    f.verification_state = VerificationState.PARTIALLY_SUPPORTED
+                elif base >= 0.40:
+                    f.verification_state = VerificationState.INCONCLUSIVE
+                else:
+                    f.verification_state = VerificationState.UNSUPPORTED
+
+            f.confidence = round(max(0.0, min(0.99, base)), 3)
+
+    # -----------------------------------------------------------------
+    # Risk dimensions
+    # -----------------------------------------------------------------
+
+    def build_risk_dimensions(self) -> None:
+        def max_state(types: Set[FindingType]) -> str:
+            vals = [f.verification_state.value for f in self.findings.values() if f.finding_type in types]
+            if VerificationState.SUPPORTED.value in vals:
+                return "SUPPORTED"
+            if VerificationState.PARTIALLY_SUPPORTED.value in vals:
+                return "PARTIALLY_SUPPORTED"
+            if VerificationState.INCONCLUSIVE.value in vals:
+                return "INCONCLUSIVE"
+            if VerificationState.REPORTED.value in vals:
+                return "REPORTED"
+            return "UNKNOWN"
+
+        self.risk_dimensions = {
+            RiskDimension.IDENTITY_RISK.value: max_state({
+                FindingType.IAM_EFFECTIVE_ACCESS_CANDIDATE,
+                FindingType.PRIVILEGED_IDENTITY_CANDIDATE,
+                FindingType.TRUST_RELATIONSHIP_OBSERVED,
+            }),
+            RiskDimension.NETWORK_EXPOSURE.value: max_state({
+                FindingType.PUBLIC_ENDPOINT_CANDIDATE,
+                FindingType.PUBLIC_SERVICE_CONFIRMED,
+            }),
+            RiskDimension.DATA_EXPOSURE.value: max_state({
+                FindingType.PUBLIC_ACCESS_CONFIGURATION_CANDIDATE,
+                FindingType.SENSITIVE_DATA_EXPOSURE,
+                FindingType.ANONYMOUS_ACCESS_SUPPORTED,
+            }),
+            RiskDimension.CONFIGURATION_RISK.value: max_state({
+                FindingType.MISCONFIGURATION_CANDIDATE,
+                FindingType.MISCONFIGURATION_SUPPORTED,
+                FindingType.BENCHMARK_DEVIATION,
+                FindingType.CSPM_STALE,
+            }),
+            RiskDimension.VULNERABILITY_RISK.value: max_state({FindingType.VULNERABILITY_CONTEXT}),
+            RiskDimension.SECRET_RISK.value: "UNKNOWN_NO_SECRET_EXPOSURE_EVIDENCE_IN_DEMO",
+            RiskDimension.LOGGING_GAP.value: max_state({FindingType.LOGGING_GAP}),
+            RiskDimension.BACKUP_RISK.value: max_state({FindingType.BACKUP_RISK}),
+            RiskDimension.RESILIENCE_RISK.value: "UNKNOWN_RESTORE_TEST_UNAVAILABLE",
+            RiskDimension.SUPPLY_CHAIN_RISK.value: max_state({FindingType.SUPPLY_CHAIN_CONTEXT}),
+            RiskDimension.INCIDENT_RISK.value: max_state({FindingType.INCIDENT_SIGNAL, FindingType.BREACH_CONTEXT}),
+            RiskDimension.EVIDENCE_CONFIDENCE.value: "MEDIUM_PASSIVE_AUTHORIZED_CORPUS",
+        }
+
+    # -----------------------------------------------------------------
+    # Gaps / actions / recommendations / handoffs
+    # -----------------------------------------------------------------
+
+    def build_knowledge_gaps(self) -> None:
+        existing = {g.description for g in self.gaps}
+
+        for f in self.findings.values():
+            if f.verification_state == VerificationState.INCONCLUSIVE:
+                desc = f"Inconclusive finding {f.id}: {f.statement}"
+                if desc not in existing:
+                    self.gaps.append(KnowledgeGap(
+                        id=new_id("GAP-", desc),
+                        gap_type=GapType.PUBLIC_EXPOSURE_UNCERTAIN if "public" in normalize_text(f.statement) else GapType.SOURCE_INDEPENDENCE_GAP,
+                        description=desc,
+                        about_resource_ids=[f.subject_id],
+                        about_finding_ids=[f.id],
+                        importance="MEDIUM",
+                        recommended_source="Authorized native configuration, data-plane logs, or owner/change records",
+                        specialist=f.specialist_handoff,
+                        expected_information_value=0.65,
+                    ))
+                    existing.add(desc)
+
+        for res in self.resources.values():
+            if not res.business_owner or not res.technical_owner:
+                desc = f"Resource {res.id} ownership/business/technical owner unresolved."
+                if desc not in existing:
+                    self.gaps.append(KnowledgeGap(
+                        id=new_id("GAP-OWN-", desc),
+                        gap_type=GapType.OWNERSHIP_UNCLEAR,
+                        description=desc,
+                        about_resource_ids=[res.id],
+                        importance="MEDIUM",
+                        recommended_source="Authorized CMDB, inventory, change management, or cost allocation records",
+                        specialist="ORGINT / FINOPS",
+                        expected_information_value=0.55,
+                    ))
+                    existing.add(desc)
+
+            if not res.data_classification_candidate:
+                desc = f"Resource {res.id} data classification unknown."
+                if desc not in existing:
+                    self.gaps.append(KnowledgeGap(
+                        id=new_id("GAP-DATA-", desc),
+                        gap_type=GapType.DATA_CLASSIFICATION_UNKNOWN,
+                        description=desc,
+                        about_resource_ids=[res.id],
+                        importance="HIGH",
+                        recommended_source="Authorized data classification metadata or DLP/catalog evidence",
+                        specialist="DATAINT / DLP",
+                        expected_information_value=0.80,
+                    ))
+                    existing.add(desc)
+
+        for cspm in self.cspm_findings.values():
+            desc = f"CSPM finding {cspm.id} may be stale or derived from native configuration."
+            if desc not in existing:
+                self.gaps.append(KnowledgeGap(
+                    id=new_id("GAP-CSPM-", desc),
+                    gap_type=GapType.CSPM_FINDING_STALE,
+                    description=desc,
+                    about_resource_ids=[cspm.resource_id],
+                    importance="MEDIUM",
+                    recommended_source="Re-run authorized CSPM scan or compare native config history",
+                    specialist="CSPM / CLOUDSEC",
+                    expected_information_value=0.60,
+                ))
+                existing.add(desc)
+
+        if not any(ev.data_plane for ev in self.audit_events.values()):
+            desc = "No data-plane storage access logs are present in the authorized corpus."
+            if desc not in existing:
+                self.gaps.append(KnowledgeGap(
+                    id=new_id("GAP-DPLOG-", desc),
+                    gap_type=GapType.LOGGING_COVERAGE_MISSING,
+                    description=desc,
+                    about_resource_ids=list(self.resources.keys()),
+                    importance="HIGH",
+                    recommended_source="Authorized storage data-plane access logs / object-level audit logs",
+                    specialist="LOGINT / CLOUDINT",
+                    expected_information_value=0.90,
+                ))
+                existing.add(desc)
+
+    def build_next_actions(self) -> None:
+        self.actions = [
+            NextAction(
+                id="ACT-NATIVE-CFG-HISTORY",
+                description="Retrieve native configuration history for the relevant incident window; do not use current config for historical conclusions.",
+                priority=1,
+                privacy_impact="LOW_IF_AUTHORIZED",
+                expected_gain=0.90,
+                specialist="CLOUDINT",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-DATA-PLANE-LOGS",
+                description="Request authorized storage data-plane/object access logs to determine whether anonymous or unauthorized reads occurred.",
+                priority=2,
+                privacy_impact="MEDIUM_IF_AUTHORIZED",
+                expected_gain=0.90,
+                specialist="LOGINT / CLOUDINT",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-DATA-CLASSIFICATION",
+                description="Resolve authorized data classification metadata for affected storage; do not inspect private object content unnecessarily.",
+                priority=3,
+                privacy_impact="MEDIUM_IF_AUTHORIZED",
+                expected_gain=0.85,
+                specialist="DATAINT / DLP",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-IAM-EFFECTIVE",
+                description="Evaluate IAM effective permissions deterministically using provider-aware policy evaluator, including conditions, boundaries, resource policies, and session context.",
+                priority=4,
+                privacy_impact="LOW",
+                expected_gain=0.85,
+                specialist="IAMINT / CLOUDINT",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-CHANGE-TICKET",
+                description="Review change ticket/approval for public-access configuration to distinguish intentional public service from unintended exposure.",
+                priority=5,
+                privacy_impact="LOW",
+                expected_gain=0.75,
+                specialist="CHANGE_MGMT / CLOUDINT",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-ENABLE-LOGGING",
+                description="Recommend enabling storage access logging and flow/log retention through authorized change workflow.",
+                priority=6,
+                privacy_impact="LOW_IF_AUTHORIZED",
+                expected_gain=0.80,
+                specialist="CLOUDSEC / LOGINT",
+                requires_human_approval=True,
+            ),
+            NextAction(
+                id="ACT-VULN-HANDOFF",
+                description="Hand off vulnerability findings to VULNINT for applicability, reachability, and mitigation validation.",
+                priority=7,
+                privacy_impact="LOW",
+                expected_gain=0.70,
+                specialist="VULNINT",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-INCIDENT-HANDOFF",
+                description="If unauthorized access evidence emerges, hand off to INCIDENTINT/LOGINT for reconstruction; CLOUDINT does not declare breach from configuration alone.",
+                priority=8,
+                privacy_impact="LOW",
+                expected_gain=0.75,
+                specialist="INCIDENTINT",
+                requires_human_approval=False,
+            ),
+            NextAction(
+                id="ACT-HUMAN-REVIEW",
+                description="Require human review before any production configuration change, IAM remediation, logging change, credential rotation, or public attribution.",
+                priority=9,
+                privacy_impact="PROTECTIVE",
+                expected_gain=0.80,
+                specialist=None,
+                requires_human_approval=True,
+            ),
+            NextAction(
+                id="ACT-NO-CLOUD-ABUSE",
+                description="Do not use/test cloud keys, assume roles, access buckets, download private objects, exploit metadata/SSRF, modify IAM, delete logs, or cross tenant boundaries.",
+                priority=99,
+                privacy_impact="PROTECTIVE",
+                expected_gain=0.0,
+                specialist=None,
+                requires_human_approval=False,
+            ),
+        ]
+
+    def build_recommendations(self) -> None:
+        self.recommendations = [
+            Recommendation(
+                id="REC-REVIEW-DATA-LOGS",
+                category="ANALYSIS",
+                action="Review authorized data-plane access logs and object classification before concluding exposure or breach.",
+                target="STG-777",
+                rationale="Public-access configuration candidate exists, but sensitive data exposure and breach are not established.",
+                finding_ids=["F-PUBCFG-STG", "F-DATAEXP-STG", "F-LOGGING-STG"],
+                evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE", "EV-AUDIT-CONFIG-CHANGE"],
+                approval=RecommendationApproval.AUTONOMOUS_ANALYTIC,
+                business_impact="LOW",
+                reversibility="N/A",
+                limitations=["Do not list/download objects outside authorized workflow."],
+            ),
+            Recommendation(
+                id="REC-RESTRICT-PUBLIC",
+                category="REMEDIATION",
+                action="If public access is unintended, restrict storage public access through approved change management.",
+                target="STG-777",
+                rationale="Historical native configuration indicated public-read capability during the reviewed window.",
+                finding_ids=["F-PUBCFG-STG", "F-MISCONFIG-STG"],
+                evidence_ids=["EV-NATIVE-CFG-PUBLIC"],
+                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
+                business_impact="May break intentional public workloads; requires owner validation.",
+                reversibility="Usually reversible, but validate dependencies.",
+                limitations=["CLOUDINT recommends only; authorized operators execute."],
+            ),
+            Recommendation(
+                id="REC-ENABLE-LOGGING",
+                category="CONTROL",
+                action="Enable storage access logging and ensure retention covers investigation window.",
+                target="STG-777",
+                rationale="Logging gap prevents confirmation or exclusion of object-level access.",
+                finding_ids=["F-LOGGING-STG"],
+                evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE"],
+                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
+                business_impact="May increase storage/logging cost.",
+                reversibility="Logging can be disabled later, but retention decisions matter.",
+                limitations=["Do not delete or disable existing logs."],
+            ),
+            Recommendation(
+                id="REC-IAM-LEASE",
+                category="IAM_REMEDIATION",
+                action="Review effective IAM permissions and reduce broad wildcard permissions where business need is not demonstrated.",
+                target="ROLE-BROAD, SP-ANALYTICS",
+                rationale="IAM policy observations exist, but effective access and privilege require deterministic policy evaluation.",
+                finding_ids=["F-IAM-SP", "F-PRIV-ROLEBROAD"],
+                evidence_ids=["EV-IAM-EXPORT"],
+                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
+                business_impact="May disrupt automation or legitimate services.",
+                reversibility="Requires rollback plan.",
+                limitations=["Do not provide privilege-escalation instructions.", "Do not assume roles for validation."],
+            ),
+            Recommendation(
+                id="REC-SECRET-HANDOFF",
+                category="HANDOFF",
+                action="If any cloud credential/key/token exposure is identified, hand off to CREDINT and rotate through authorized workflow; CLOUDINT must not test credentials.",
+                target="Any exposed cloud secret",
+                rationale="Credential exposure handling is outside CLOUDINT defensive analysis boundary.",
+                finding_ids=[],
+                evidence_ids=[],
+                approval=RecommendationApproval.HUMAN_APPROVAL_REQUIRED,
+                business_impact="Rotation may require service coordination.",
+                reversibility="Managed through secret rotation workflow.",
+                limitations=["Do not use, test, or redeem credentials."],
+            ),
+            Recommendation(
+                id="REC-BACKUP-TEST",
+                category="RESILIENCE",
+                action="Validate backup restorability through authorized restore test; backup existence alone is insufficient.",
+                target="STG-777 / associated backups",
+                rationale="Backup context exists but restore-test evidence is unavailable.",
+                finding_ids=["F-BACKUP-STG"],
+                evidence_ids=["EV-NATIVE-INV"],
+                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
+                business_impact="Restore test may consume resources; schedule carefully.",
+                reversibility="Test restore should be isolated.",
+                limitations=["Do not perform destructive restoration autonomously."],
+            ),
+        ]
+
+    def build_handoffs(self) -> None:
+        self.handoffs = [
+            {"specialist": "CREDINT", "reason": "Exposed cloud key/token/secret handling; CLOUDINT must not test or use credentials."},
+            {"specialist": "VULNINT", "reason": "CVE applicability, reachability, exploitability, and remediation validation."},
+            {"specialist": "INCIDENTINT / LOGINT", "reason": "Cloud incident reconstruction and log correlation if unauthorized access evidence emerges."},
+            {"specialist": "BREACHINT", "reason": "Breach context and exposure intelligence if disclosure is supported."},
+            {"specialist": "SUPPLYCHAININT", "reason": "Third-party/cloud dependency resilience and vendor risk."},
+            {"specialist": "NETINT / DNSINT / CERTINT", "reason": "Deeper internet-facing infrastructure, DNS history, and certificate context."},
+            {"specialist": "ORGINT / CORPINT", "reason": "Business/technical ownership and organizational responsibility."},
+            {"specialist": "CTI / THREATACTORINT", "reason": "Threat actor/campaign context only with independent evidence; cloud TTP/API event alone is not attribution."},
+        ]
+
+    # -----------------------------------------------------------------
+    # Dual AI review / summary
+    # -----------------------------------------------------------------
+
+    def dual_ai_review(self) -> Dict[str, Any]:
+        issues: List[str] = []
+
+        if self.contradictions:
+            issues.append(f"{len(self.contradictions)} contradiction(s) remain open.")
+
+        stale = [f for f in self.findings.values() if f.finding_type == FindingType.CSPM_STALE and f.verification_state == VerificationState.SUPPORTED]
+        if stale:
+            issues.append("CSPM findings appear stale relative to native configuration history.")
+
+        data_exp = [f for f in self.findings.values() if f.finding_type == FindingType.SENSITIVE_DATA_EXPOSURE]
+        if any(f.verification_state == VerificationState.INCONCLUSIVE for f in data_exp):
+            issues.append("Sensitive data exposure is inconclusive due absent data-plane access/classification evidence.")
+
+        iam = [f for f in self.findings.values() if f.finding_type in {FindingType.IAM_EFFECTIVE_ACCESS_CANDIDATE, FindingType.PRIVILEGED_IDENTITY_CANDIDATE}]
+        if iam:
+            issues.append("IAM effective permissions and privileged identity status remain candidate-only.")
+
+        logging_gap = [f for f in self.findings.values() if f.finding_type == FindingType.LOGGING_GAP]
+        if logging_gap:
+            issues.append("Logging gap prevents confirmation or exclusion of object-level access.")
+
+        dependent = [
+            f for f in self.findings.values()
+            if self.independence_state(f.source_ids) in {"DEPENDENT", "SINGLE_SOURCE"}
+        ]
+        if dependent:
+            issues.append("Some findings rely on single-source or dependent source families.")
+
+        if any(f.finding_type == FindingType.VULNERABILITY_CONTEXT for f in self.findings.values()):
+            issues.append("Vulnerability applicability requires VULNINT handoff; CVE presence is not exploitation.")
+
+        if not issues:
+            verdict = "AGREE"
+        elif len(issues) <= 5:
+            verdict = "PARTIAL_AGREEMENT"
+        else:
+            verdict = "INSUFFICIENT_EVIDENCE"
+
+        return {
+            "primary_cloud_analyst": (
+                "Authorized native configuration shows storage public-read capability during the historical window, "
+                "later changed to private. CSPM reporting public access at current retrieval is stale/dependent. "
+                "Public endpoint candidate exists for load-balanced service, but service listening and anonymous data access are not established. "
+                "IAM policy observations exist, but effective permissions remain unresolved."
+            ),
+            "independent_cloud_skeptic_issues": issues,
+            "verdict": verdict,
+            "adversarial_checks": [
+                "Are provider and tenant confused? No; provider-native tenant/account/resource IDs preserved.",
+                "Is resource name treated as identity? No; resource ID anchors used.",
+                "Is owner tag treated as verified owner? No; tag conflict preserved.",
+                "Is IAM policy treated as effective access? No; candidate only.",
+                "Is public endpoint treated as public data? No; separate findings.",
+                "Is CSPM treated as independent confirmation? No; derived/stale flagged.",
+                "Is current configuration used for historical event? No; temporal config eras used.",
+                "Was any credential/bucket/metadata/IAM action performed? No.",
+            ],
+            "note": "AI agreement is analytical agreement, not independent cloud source corroboration.",
+        }
+
+    def analyst_summary(self, dual: Dict[str, Any]) -> str:
+        stg = self.resources.get("STG-777")
+        vm = self.resources.get("VM-01")
+        lb = self.resources.get("LB-01")
+
+        lines = [
+            "CLOUD PROVIDER: aws-like synthetic provider; tenant/account/project resolved from authorized inventory.",
+            "TENANT / ACCOUNT / PROJECT: T-ACME / A-123456789012 / P-payments.",
+            "RESOURCE INVENTORY:",
+            f"- STG-777: {stg.name if stg else 'unknown'} ({stg.resource_type if stg else 'ObjectStorage'}) in {stg.region if stg else 'us-east-1'}.",
+            f"- VM-01: {vm.name if vm else 'unknown'} ({vm.resource_type if vm else 'ComputeInstance'}).",
+            f"- LB-01: {lb.name if lb else 'unknown'} ({lb.resource_type if lb else 'LoadBalancer'}).",
+            "",
+            "CURRENT VS HISTORICAL STATE:",
+            "- Storage public-read configuration was supported during 2026-09-01 to 2026-10-01.",
+            "- Native configuration changed to private at 2026-10-01.",
+            "- CSPM finding retrieved 2026-10-08 still reported public access; treated as stale/dependent.",
+            "",
+            "EXPOSURE:",
+            "- PUBLIC_ACCESS_CONFIGURATION_CANDIDATE: supported for historical window.",
+            "- SENSITIVE_DATA_EXPOSURE: inconclusive; no data-plane successful anonymous read and no verified classification.",
+            "- PUBLIC_ENDPOINT_CANDIDATE: load balancer/public IP/DNS observed; service listening not confirmed.",
+            "- BREACH: not established.",
+            "",
+            "IAM:",
+            "- IAM policy observations exist for read-only service principal and broad role.",
+            "- Effective permissions remain candidate-only due unresolved conditions/boundaries/session context.",
+            "- Privileged identity is candidate-only; role name and wildcard are not sufficient.",
+            "",
+            "LOGGING / BACKUP / VULN:",
+            "- Storage access logging gap supported.",
+            "- Backup restorability unknown.",
+            "- Vulnerability context requires VULNINT handoff.",
+            "",
+            f"DUAL-AI REVIEW: {dual['verdict']}.",
+            "PRIVACY/POLICY: Defensive authorized cloud intelligence only. No credential use/testing, role assumption, bucket access, private object download, metadata/SSRF exploitation, IAM modification, log deletion, cross-tenant access, or active probing.",
+            "NEXT ACTION: Retrieve authorized data-plane logs and classification metadata; review change ticket; evaluate IAM effectively with deterministic policy evaluator; remediate only through approved workflow.",
+        ]
+        return "\n".join(lines)
+
+    # -----------------------------------------------------------------
+    # Prepare
+    # -----------------------------------------------------------------
+
+    def prepare(self) -> None:
+        self.detect_contradictions()
+        self.fact_gate_findings()
+        self.build_risk_dimensions()
+        self.build_knowledge_gaps()
+        self.build_next_actions()
+        self.build_recommendations()
+        self.build_handoffs()
+
+
+# =====================================================================
+# SAMPLE DATA
+# =====================================================================
+
+def sample_case() -> Case:
+    return Case(
+        case_id="SAMPLE-CLOUDINT-001",
+        task_id="TASK-CLOUDINT-001",
+        objective=(
+            "Authorized defensive review of cloud storage exposure, IAM configuration, network exposure, "
+            "CSPM validity, logging coverage, and temporal configuration state for tenant T-ACME / account A-123456789012."
+        ),
+        questions=[
+            "Which cloud tenant/account/resource IDs are in scope?",
+            "Was storage publicly accessible during the incident window?",
+            "Is sensitive data exposure supported?",
+            "Is there evidence of breach?",
+            "Is CSPM finding independent or stale?",
+            "What is the current vs historical configuration?",
+            "Are IAM policies equivalent to effective access?",
+            "What defensive next actions are justified?",
+        ],
+        scope=["authorized_defensive_cloud", "passive_first", "case_scoped", "no_cross_tenant"],
+        authorization="demo_authorized_cloud_intelligence",
+        provider="aws-like",
+        tenant_id="T-ACME",
+        account_id="A-123456789012",
+        project_id="P-payments",
+        resources=["STG-777", "VM-01", "LB-01"],
+        time_range="2026-09-01/2026-10-08",
+        sample=True,
+    )
+
+
+def build_sample_cloudint() -> CloudInt:
+    c = CloudInt(sample_case())
+    retrieved = now_iso()
+
+    # Sources
+    c.add_source(Source(
+        id="SRC-NATIVE-INV",
+        title="Authorized cloud native inventory export",
+        url="https://cloud.example/inventory/T-ACME/A-123456789012",
+        source_type=SourceType.CLOUD_NATIVE_INVENTORY,
+        independence_group="NATIVE_INVENTORY_ROOT",
+        reliability=0.95,
+        published_at="2026-10-08T00:00:00Z",
+        retrieved_at=retrieved,
+        notes="Provider-native resource inventory. Strong for resource identity, not data content.",
+    ))
+    c.add_source(Source(
+        id="SRC-NATIVE-CFG",
+        title="Authorized cloud native configuration export",
+        url="https://cloud.example/config/T-ACME/A-123456789012",
+        source_type=SourceType.CLOUD_NATIVE_CONFIG,
+        independence_group="NATIVE_CONFIG_ROOT",
+        reliability=0.95,
+        published_at="2026-10-08T00:05:00Z",
+        retrieved_at=retrieved,
+        notes="Provider-native configuration snapshots with effective time ranges.",
+    ))
+    c.add_source(Source(
+        id="SRC-IAM",
+        title="Authorized IAM export",
+        url="https://cloud.example/iam/T-ACME/A-123456789012",
+        source_type=SourceType.IAM_EXPORT,
+        independence_group="IAM_ROOT",
+        reliability=0.94,
+        published_at="2026-10-08T00:10:00Z",
+        retrieved_at=retrieved,
+        notes="IAM identities, roles, policies, trust relationships. Policy is not effective access by itself.",
+    ))
+    c.add_source(Source(
+        id="SRC-AUDIT",
+        title="Authorized cloud control-plane audit log",
+        url="https://cloud.example/audit/T-ACME/A-123456789012",
+        source_type=SourceType.CLOUD_AUDIT_LOG,
+        independence_group="AUDIT_ROOT",
+        reliability=0.93,
+        published_at="2026-10-08T00:15:00Z",
+        retrieved_at=retrieved,
+        notes="Control-plane events. Data-plane object access logs are not present in this corpus.",
+    ))
+    c.add_source(Source(
+        id="SRC-FLOW",
+        title="Authorized cloud flow log",
+        url="https://cloud.example/flow/T-ACME/A-123456789012",
+        source_type=SourceType.CLOUD_FLOW_LOG,
+        independence_group="FLOW_ROOT",
+        reliability=0.88,
+        published_at="2026-10-08T00:20:00Z",
+        retrieved_at=retrieved,
+        notes="Network flow metadata. Flow does not prove object access, user intent, or exfiltration.",
+    ))
+    c.add_source(Source(
+        id="SRC-CSPM",
+        title="Authorized CSPM finding export",
+        url="https://cspm.example/findings/T-ACME/A-123456789012",
+        source_type=SourceType.CSPM,
+        independence_group="CSPM_DERIVED_NATIVE",
+        reliability=0.68,
+        derived_from="SRC-NATIVE-CFG",
+        published_at="2026-10-08T00:25:00Z",
+        retrieved_at=retrieved,
+        effective_at="2026-09-20T00:00:00Z",
+        notes="CSPM appears derived from native configuration and may be stale.",
+    ))
+    c.add_source(Source(
+        id="SRC-VULN",
+        title="Authorized vulnerability scanner export",
+        url="https://vuln.example/scans/T-ACME/A-123456789012",
+        source_type=SourceType.VULNERABILITY_SCANNER,
+        independence_group="VULN_ROOT",
+        reliability=0.72,
+        published_at="2026-10-07T00:00:00Z",
+        retrieved_at=retrieved,
+        notes="CVE association requires applicability validation by VULNINT.",
+    ))
+    c.add_source(Source(
+        id="SRC-DNS",
+        title="Public DNS record for api.example",
+        url="https://dns.example/records/api.example",
+        source_type=SourceType.PUBLIC_DNS,
+        independence_group="DNS_ROOT",
+        reliability=0.78,
+        published_at="2026-10-08T00:30:00Z",
+        retrieved_at=retrieved,
+        notes="Public DNS supports endpoint mapping, not tenant ownership.",
+    ))
+    c.add_source(Source(
+        id="SRC-CT",
+        title="Certificate transparency record for api.example",
+        url="https://ct.example/logs/api.example",
+        source_type=SourceType.CERTIFICATE_TRANSPARENCY,
+        independence_group="CT_ROOT",
+        reliability=0.72,
+        published_at="2026-09-01T00:00:00Z",
+        retrieved_at=retrieved,
+        notes="CT proves certificate issuance/logging, not current deployment or tenant ownership.",
+    ))
+    c.add_source(Source(
+        id="SRC-BILLING",
+        title="Authorized billing/resource metadata",
+        url="https://billing.example/accounts/A-123456789012",
+        source_type=SourceType.BILLING_METADATA,
+        independence_group="BILLING_ROOT",
+        reliability=0.82,
+        published_at="2026-10-08T00:35:00Z",
+        retrieved_at=retrieved,
+        notes="Cost metadata is not compromise evidence.",
+    ))
+
+    # Evidence
+    c.add_evidence(Evidence(
+        id="EV-NATIVE-INV",
+        source_id="SRC-NATIVE-INV",
+        artifact_type="resource_inventory",
+        excerpt="Inventory lists STG-777 payments-data in us-east-1, VM-01 web-server, LB-01 public-load-balancer.",
+        observed_at="2026-10-08T00:00:00Z",
+        parsed_fields={
+            "resources": ["STG-777", "VM-01", "LB-01"],
+            "provider": "aws-like",
+            "tenant_id": "T-ACME",
+            "account_id": "A-123456789012",
+        },
+    ))
+    c.add_evidence(Evidence(
+        id="EV-NATIVE-CFG-PUBLIC",
+        source_id="SRC-NATIVE-CFG",
+        artifact_type="storage_configuration_snapshot",
+        excerpt="Storage STG-777 configuration effective 2026-09-01 to 2026-10-01: public_read=true, block_public_access=false, access_logging_enabled=false.",
+        observed_at="2026-09-15T00:00:00Z",
+        effective_at="2026-09-01T00:00:00Z/2026-10-01T00:00:00Z",
+        parsed_fields={
+            "resource_id": "STG-777",
+            "public_read": True,
+            "block_public_access": False,
+            "access_logging_enabled": False,
+            "encryption_at_rest": True,
+            "versioning": True,
+        },
+    ))
+    c.add_evidence(Evidence(
+        id="EV-NATIVE-CFG-PRIVATE",
+        source_id="SRC-NATIVE-CFG",
+        artifact_type="storage_configuration_snapshot",
+        excerpt="Storage STG-777 configuration effective from 2026-10-01: public_read=false, block_public_access=true, access_logging_enabled=false.",
+        observed_at="2026-10-02T00:00:00Z",
+        effective_at="2026-10-01T00:00:00Z",
+        parsed_fields={
+            "resource_id": "STG-777",
+            "public_read": False,
+            "block_public_access": True,
+            "access_logging_enabled": False,
+            "encryption_at_rest": True,
+            "versioning": True,
+        },
+    ))
+    c.add_evidence(Evidence(
+        id="EV-IAM-EXPORT",
+        source_id="SRC-IAM",
+        artifact_type="iam_export",
+        excerpt="IAM export lists SP-ANALYTICS assigned ROLE-READONLY with policy allowing s3:GetObject/ListBucket on payments-data. ROLE-BROAD has wildcard policy with SourceIp condition.",
+        observed_at="2026-10-08T00:10:00Z",
+        parsed_fields={
+            "identities": ["SP-ANALYTICS", "USER-1"],
+            "roles": ["ROLE-READONLY", "ROLE-BROAD"],
+            "policies": ["P-READONLY", "P-BROAD"],
+        },
+    ))
+    c.add_evidence(Evidence(
+        id="EV-AUDIT-CONFIG-CHANGE",
+        source_id="SRC-AUDIT",
+        artifact_type="control_plane_audit_event",
+        excerpt="Audit event PutBucketPublicAccessBlock at 2026-10-01T09:00:00Z by USER-1 on STG-777 status SUCCESS.",
+        observed_at="2026-10-01T09:00:00Z",
+        effective_at="2026-10-01T09:00:00Z",
+        parsed_fields={
+            "event_name": "PutBucketPublicAccessBlock",
+            "actor_identity_id": "USER-1",
+            "resource_id": "STG-777",
+            "status": "SUCCESS",
+            "data_plane": False,
+        },
+    ))
+    c.add_evidence(Evidence(
+        id="EV-FLOW-STG",
+        source_id="SRC-FLOW",
+        artifact_type="flow_log_record",
+        excerpt="Flow log: 203.0.113.10 to storage endpoint 198.51.100.77:443 ACCEPT, 1024 bytes, 2026-09-20T11:59:00Z.",
+        observed_at="2026-09-20T11:59:00Z",
+        parsed_fields={
+            "resource_id": "STG-777",
+            "dst_port": "443",
+            "bytes": 1024,
+            "action": "ACCEPT",
+        },
+        limitations=["Flow metadata does not prove object GET/PUT or data content."],
+    ))
+    c.add_evidence(Evidence(
+        id="EV-CSPM-STG",
+        source_id="SRC-CSPM",
+        artifact_type="cspm_finding",
+        excerpt="CSPM reports STG-777 as public-read enabled, severity HIGH, status OPEN, effective 2026-09-20, retrieved 2026-10-08.",
+        observed_at="2026-10-08T00:25:00Z",
+        effective_at="2026-09-20T00:00:00Z",
+        parsed_fields={
+            "resource_id": "STG-777",
+            "rule_id": "storage-public-read",
+            "severity": "HIGH",
+            "status": "OPEN",
+            "statement": "Storage bucket allows public read access",
+            "derived_from_native_config": True,
+        },
+    ))
+    c.add_evidence(Evidence(
+        id="EV-VULN-VM",
+        source_id="SRC-VULN",
+        artifact_type="vulnerability_finding",
+        excerpt="Scanner reports CVE-2026-1234 associated with VM-01 image package openssl 3.0.x.",
+        observed_at="2026-10-07T00:00:00Z",
+        parsed_fields={
+            "resource_id": "VM-01",
+            "cve": "CVE-2026-1234",
+            "component": "openssl",
+            "version": "3.0.x",
+        },
+        limitations=["Applicability, reachability, and mitigation require VULNINT validation."],
+    ))
+    c.add_evidence(Evidence(
+        id="EV-DNS-API",
+        source_id="SRC-DNS",
+        artifact_type="dns_record",
+        excerpt="Public DNS api.example CNAME/A maps to LB-01 endpoint.",
+        observed_at="2026-10-08T00:30:00Z",
+        parsed_fields={"dns_name": "api.example", "resource_id": "LB-01"},
+    ))
+    c.add_evidence(Evidence(
+        id="EV-CT-API",
+        source_id="SRC-CT",
+        artifact_type="certificate_transparency_record",
+        excerpt="Certificate logged for api.example and *.api.example.",
+        observed_at="2026-09-01T00:00:00Z",
+        parsed_fields={"san": ["api.example", "*.api.example"], "resource_id": "LB-01"},
+        limitations=["CT does not prove current deployment or tenant ownership."],
+    ))
+    c.add_evidence(Evidence(
+        id="EV-BILLING-COST",
+        source_id="SRC-BILLING",
+        artifact_type="billing_metadata",
+        excerpt="Billing shows modest compute cost increase in P-payments during September 2026.",
+        observed_at="2026-10-08T00:35:00Z",
+        parsed_fields={"account_id": "A-123456789012", "cost_change": "MODEST_INCREASE"},
+        limitations=["Cost anomaly is not compromise evidence."],
+    ))
+
+    # Resources
+    c.add_resource(Resource(
+        id="STG-777",
+        provider="aws-like",
+        tenant_id="T-ACME",
+        account_id="A-123456789012",
+        project_id="P-payments",
+        resource_type="OBJECT_STORAGE",
+        name="payments-data",
+        region="us-east-1",
+        environment=Environment.PRODUCTION,
+        state=ResourceState.ACTIVE,
+        owner_candidate="payments-team",
+        business_owner="Finance Applications",
+        technical_owner="Platform Engineering",
+        data_owner="Payments Data Steward",
+        data_classification_candidate=None,
+        tags={
+            "owner": "payments-team",
+            "environment": "production",
+            "application": "payments",
+            "data_sensitivity_tag_claim": "confidential",
+        },
+        first_seen="2026-08-01T00:00:00Z",
+        last_seen="2026-10-08T00:00:00Z",
+        source_ids=["SRC-NATIVE-INV", "SRC-NATIVE-CFG"],
+        evidence_ids=["EV-NATIVE-INV", "EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE"],
+        confidence=0.95,
+        limitations=[
+            "Owner tag is a metadata claim; technical/business owner resolved from authorized inventory.",
+            "Data classification tag claim is not verified data-content classification.",
+        ],
+    ))
+    c.add_resource(Resource(
+        id="VM-01",
+        provider="aws-like",
+        tenant_id="T-ACME",
+        account_id="A-123456789012",
+        project_id="P-payments",
+        resource_type="COMPUTE_INSTANCE",
+        name="web-server",
+        region="us-east-1",
+        zone="us-east-1a",
+        environment=Environment.PRODUCTION,
+        state=ResourceState.ACTIVE,
+        owner_candidate="platform-team",
+        business_owner="Payments Web",
+        technical_owner="Platform Engineering",
+        data_owner=None,
+        data_classification_candidate=None,
+        tags={"owner": "platform-team", "environment": "production"},
+        first_seen="2026-07-01T00:00:00Z",
+        last_seen="2026-10-08T00:00:00Z",
+        source_ids=["SRC-NATIVE-INV", "SRC-VULN"],
+        evidence_ids=["EV-NATIVE-INV", "EV-VULN-VM"],
+        confidence=0.94,
+        limitations=["Public IP does not prove public service or vulnerability."],
+    ))
+    c.add_resource(Resource(
+        id="LB-01",
+        provider="aws-like",
+        tenant_id="T-ACME",
+        account_id="A-123456789012",
+        project_id="P-payments",
+        resource_type="LOAD_BALANCER",
+        name="payments-lb",
+        region="us-east-1",
+        environment=Environment.PRODUCTION,
+        state=ResourceState.ACTIVE,
+        owner_candidate="platform-team",
+        business_owner="Payments Web",
+        technical_owner="Platform Engineering",
+        data_owner=None,
+        data_classification_candidate=None,
+        tags={"owner": "platform-team"},
+        first_seen="2026-07-01T00:00:00Z",
+        last_seen="2026-10-08T00:00:00Z",
+        source_ids=["SRC-NATIVE-INV", "SRC-DNS", "SRC-CT"],
+        evidence_ids=["EV-NATIVE-INV", "EV-DNS-API", "EV-CT-API"],
+        confidence=0.92,
+        limitations=["Load balancer IP/DNS does not identify backend tenant or prove service exposure."],
+    ))
+
+    # Config snapshots
+    c.add_config_snapshot(ConfigSnapshot(
+        id="CFG-STG-PUBLIC",
+        resource_id="STG-777",
+        config_type="STORAGE_ACCESS",
+        attributes={
+            "public_read": True,
+            "block_public_access": False,
+            "access_logging_enabled": False,
+            "encryption_at_rest": True,
+            "versioning": True,
+            "object_ownership_control": "BUCKET_OWNER_ENFORCED_CLAIM",
+        },
+        valid_from="2026-09-01T00:00:00Z",
+        valid_to="2026-10-01T00:00:00Z",
+        observed_at="2026-09-15T00:00:00Z",
+        source_id="SRC-NATIVE-CFG",
+        evidence_id="EV-NATIVE-CFG-PUBLIC",
+        confidence=0.95,
+        limitations=["Configuration candidate only; does not prove object-level public readability."],
+    ))
+    c.add_config_snapshot(ConfigSnapshot(
+        id="CFG-STG-PRIVATE",
+        resource_id="STG-777",
+        config_type="STORAGE_ACCESS",
+        attributes={
+            "public_read": False,
+            "block_public_access": True,
+            "access_logging_enabled": False,
+            "encryption_at_rest": True,
+            "versioning": True,
+            "object_ownership_control": "BUCKET_OWNER_ENFORCED_CLAIM",
+        },
+        valid_from="2026-10-01T00:00:00Z",
+        valid_to=None,
+        observed_at="2026-10-02T00:00:00Z",
+        source_id="SRC-NATIVE-CFG",
+        evidence_id="EV-NATIVE-CFG-PRIVATE",
+        confidence=0.95,
+        limitations=["Current private state does not retroactively prove historical private state."],
+    ))
+
+    # Identities / IAM
+    c.add_identity(Identity(
+        id="SP-ANALYTICS",
+        provider="aws-like",
+        tenant_id="T-ACME",
+        account_id="A-123456789012",
+        identity_type=IdentityType.SERVICE_PRINCIPAL,
+        display_name="analytics-service-principal",
+        principal_id="SP-998877",
+        enabled=True,
+        created_at="2026-05-01T00:00:00Z",
+        last_used_at="2026-10-07T00:00:00Z",
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        confidence=0.94,
+        limitations=["Service principal is not a person."],
+    ))
+    c.add_identity(Identity(
+        id="USER-1",
+        provider="aws-like",
+        tenant_id="T-ACME",
+        account_id="A-123456789012",
+        identity_type=IdentityType.HUMAN_USER,
+        display_name="user-1",
+        principal_id="USER-001",
+        enabled=True,
+        created_at="2025-01-01T00:00:00Z",
+        last_used_at="2026-10-01T09:00:00Z",
+        source_ids=["SRC-IAM", "SRC-AUDIT"],
+        evidence_ids=["EV-IAM-EXPORT", "EV-AUDIT-CONFIG-CHANGE"],
+        confidence=0.93,
+        limitations=["Cloud identity does not automatically establish physical person operator in incident context."],
+    ))
+
+    c.add_policy(Policy(
+        id="P-READONLY",
+        provider="aws-like",
+        account_id="A-123456789012",
+        policy_name="PaymentsReadOnly",
+        policy_type="IDENTITY_POLICY",
+        statements=[
+            PolicyStatement(
+                effect="Allow",
+                actions=["s3:GetObject", "s3:ListBucket"],
+                resources=["arn:aws-like:s3:::payments-data", "arn:aws-like:s3:::payments-data/*"],
+                conditions={},
+            )
+        ],
+        attached_to=["ROLE-READONLY"],
+        valid_from="2026-05-01T00:00:00Z",
+        valid_to=None,
+        source_id="SRC-IAM",
+        evidence_id="EV-IAM-EXPORT",
+        confidence=0.94,
+        limitations=["Policy statement is not effective access without attachment/trust/conditions/boundaries."],
+    ))
+    c.add_policy(Policy(
+        id="P-BROAD",
+        provider="aws-like",
+        account_id="A-123456789012",
+        policy_name="BroadAdminLike",
+        policy_type="IDENTITY_POLICY",
+        statements=[
+            PolicyStatement(
+                effect="Allow",
+                actions=["*"],
+                resources=["*"],
+                conditions={"aws:SourceIp": "10.0.0.0/8"},
+            )
+        ],
+        attached_to=["ROLE-BROAD"],
+        valid_from="2026-06-01T00:00:00Z",
+        valid_to=None,
+        source_id="SRC-IAM",
+        evidence_id="EV-IAM-EXPORT",
+        confidence=0.94,
+        limitations=[
+            "Wildcard policy may be constrained by conditions, permission boundaries, resource policies, and session context.",
+            "Role name does not prove privilege.",
+        ],
+    ))
+
+    c.add_role(Role(
+        id="ROLE-READONLY",
+        provider="aws-like",
+        account_id="A-123456789012",
+        role_name="PaymentsReadOnlyRole",
+        role_arn_like="arn:aws-like:iam::A-123456789012:role/PaymentsReadOnlyRole",
+        trust_policy_id="TRUST-ACCOUNT-A",
+        attached_policy_ids=["P-READONLY"],
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        confidence=0.94,
+    ))
+    c.add_role(Role(
+        id="ROLE-BROAD",
+        provider="aws-like",
+        account_id="A-123456789012",
+        role_name="PlatformBroadRole",
+        role_arn_like="arn:aws-like:iam::A-123456789012:role/PlatformBroadRole",
+        trust_policy_id="TRUST-ACCOUNT-A",
+        attached_policy_ids=["P-BROAD"],
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        confidence=0.94,
+        limitations=["Privileged status candidate only; requires effective permission evaluation."],
+    ))
+
+    c.add_role_attachment(RoleAttachment(
+        id="ATT-SP-READONLY",
+        identity_id="SP-ANALYTICS",
+        role_id="ROLE-READONLY",
+        valid_from="2026-05-01T00:00:00Z",
+        valid_to=None,
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        confidence=0.94,
+    ))
+    c.add_trust_relationship(TrustRelationship(
+        id="TRUST-SP-READONLY",
+        from_identity_id="SP-ANALYTICS",
+        to_role_id="ROLE-READONLY",
+        trust_type="SERVICE_PRINCIPAL_TO_ROLE",
+        conditions={"audience": "analytics.internal"},
+        valid_from="2026-05-01T00:00:00Z",
+        valid_to=None,
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        confidence=0.92,
+        limitations=["Trust does not prove successful assumption or effective access."],
+    ))
+    c.add_trust_relationship(TrustRelationship(
+        id="TRUST-ACCOUNT-A",
+        from_identity_id="USER-1",
+        to_role_id="ROLE-BROAD",
+        trust_type="ACCOUNT_PRINCIPAL_TO_ROLE",
+        conditions={"mfa_present": True},
+        valid_from="2026-06-01T00:00:00Z",
+        valid_to=None,
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        confidence=0.92,
+        limitations=["Trust with MFA condition does not establish current session or effective privilege without evaluation."],
+    ))
+
+    # Network
+    c.add_security_group_rule(SecurityGroupRule(
+        id="SG-WEB-443-INTERNET",
+        security_group_id="SG-WEB",
+        direction="ingress",
+        protocol="tcp",
+        port_range="443",
+        source_cidr="0.0.0.0/0",
+        action="ALLOW",
+        description="HTTPS from Internet to web tier",
+        valid_from="2026-07-01T00:00:00Z",
+        valid_to=None,
+        source_ids=["SRC-NATIVE-CFG"],
+        evidence_ids=["EV-NATIVE-INV"],
+        confidence=0.93,
+        limitations=["Security group allow rule does not prove service listening or vulnerability."],
+    ))
+    c.add_network_endpoint(NetworkEndpoint(
+        id="EP-LB-PUBLIC",
+        resource_id="LB-01",
+        endpoint_type="PUBLIC_LOAD_BALANCER",
+        public=True,
+        ip="198.51.100.55",
+        dns_name="api.example",
+        load_balancer_id="LB-01",
+        target_resource_ids=["VM-01"],
+        valid_from="2026-07-01T00:00:00Z",
+        valid_to=None,
+        source_ids=["SRC-NATIVE-INV", "SRC-DNS", "SRC-CT"],
+        evidence_ids=["EV-NATIVE-INV", "EV-DNS-API", "EV-CT-API"],
+        confidence=0.90,
+        limitations=["Public endpoint candidate; no active probe performed."],
+    ))
+    c.add_network_endpoint(NetworkEndpoint(
+        id="EP-VM-PUBLIC-IP",
+        resource_id="VM-01",
+        endpoint_type="PUBLIC_IP",
+        public=True,
+        ip="198.51.100.20",
+        dns_name=None,
+        load_balancer_id="LB-01",
+        target_resource_ids=["VM-01"],
+        valid_from="2026-07-01T00:00:00Z",
+        valid_to=None,
+        source_ids=["SRC-NATIVE-INV"],
+        evidence_ids=["EV-NATIVE-INV"],
+        confidence=0.88,
+        limitations=["Public IP does not prove public service."],
+    ))
+
+    # CSPM
+    c.add_cspm_finding(CSPMFinding(
+        id="CSPM-STG-PUBLIC",
+        resource_id="STG-777",
+        rule_id="storage-public-read",
+        severity="HIGH",
+        status="OPEN",
+        statement="Storage bucket allows public read access",
+        effective_at="2026-09-20T00:00:00Z",
+        retrieved_at="2026-10-08T00:25:00Z",
+        source_id="SRC-CSPM",
+        evidence_id="EV-CSPM-STG",
+        derived_from_native_config=True,
+        confidence=0.68,
+        limitations=[
+            "CSPM finding may be stale relative to native configuration change on 2026-10-01.",
+            "CSPM is derived from native configuration and is not independent corroboration.",
+        ],
+    ))
+
+    # Audit / Flow
+    c.add_audit_event(AuditEvent(
+        id="AUDIT-CONFIG-CHANGE",
+        provider="aws-like",
+        account_id="A-123456789012",
+        event_name="PutBucketPublicAccessBlock",
+        actor_identity_id="USER-1",
+        actor_type="HUMAN_USER",
+        resource_id="STG-777",
+        source_ip="10.10.10.10",
+        auth_type="IAM",
+        status="SUCCESS",
+        event_time="2026-10-01T09:00:00Z",
+        request_id="REQ-9911",
+        data_plane=False,
+        source_ids=["SRC-AUDIT"],
+        evidence_ids=["EV-AUDIT-CONFIG-CHANGE"],
+        confidence=0.93,
+        limitations=["Control-plane event; does not prove object-level data access."],
+    ))
+    c.add_flow_event(FlowEvent(
+        id="FLOW-STG",
+        src_ip="203.0.113.10",
+        dst_ip="198.51.100.77",
+        dst_port="443",
+        protocol="tcp",
+        bytes_transferred=1024,
+        action="ACCEPT",
+        start_time="2026-09-20T11:59:00Z",
+        end_time="2026-09-20T11:59:30Z",
+        resource_id="STG-777",
+        source_ids=["SRC-FLOW"],
+        evidence_ids=["EV-FLOW-STG"],
+        confidence=0.88,
+        limitations=["Flow does not prove object GET/PUT, data content, or exfiltration."],
+    ))
+
+    # Findings
+    c.add_finding(Finding(
+        id="F-RES-STG",
+        finding_type=FindingType.RESOURCE_EXISTS,
+        subject_id="STG-777",
+        statement="Object storage resource STG-777 exists in tenant T-ACME / account A-123456789012 / project P-payments.",
+        risk_dimension=RiskDimension.EVIDENCE_CONFIDENCE.value,
+        source_ids=["SRC-NATIVE-INV"],
+        evidence_ids=["EV-NATIVE-INV"],
+        effective_at="2026-10-08T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-RES-VM",
+        finding_type=FindingType.RESOURCE_EXISTS,
+        subject_id="VM-01",
+        statement="Compute resource VM-01 exists in tenant T-ACME / account A-123456789012 / project P-payments.",
+        risk_dimension=RiskDimension.EVIDENCE_CONFIDENCE.value,
+        source_ids=["SRC-NATIVE-INV"],
+        evidence_ids=["EV-NATIVE-INV"],
+        effective_at="2026-10-08T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-RES-LB",
+        finding_type=FindingType.RESOURCE_EXISTS,
+        subject_id="LB-01",
+        statement="Load balancer resource LB-01 exists in tenant T-ACME / account A-123456789012 / project P-payments.",
+        risk_dimension=RiskDimension.EVIDENCE_CONFIDENCE.value,
+        source_ids=["SRC-NATIVE-INV", "SRC-DNS"],
+        evidence_ids=["EV-NATIVE-INV", "EV-DNS-API"],
+        effective_at="2026-10-08T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-CFG-STG-PUBLIC-HIST",
+        finding_type=FindingType.CONFIGURATION_STATE,
+        subject_id="STG-777",
+        statement="Storage STG-777 native configuration indicated public-read capability during 2026-09-01 to 2026-10-01.",
+        risk_dimension=RiskDimension.CONFIGURATION_RISK.value,
+        source_ids=["SRC-NATIVE-CFG"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC"],
+        effective_at="2026-09-20T00:00:00Z",
+        valid_from="2026-09-01T00:00:00Z",
+        valid_to="2026-10-01T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-CFG-STG-PRIVATE-CURRENT",
+        finding_type=FindingType.CONFIGURATION_STATE,
+        subject_id="STG-777",
+        statement="Storage STG-777 native configuration indicates private/block-public-access from 2026-10-01 onward.",
+        risk_dimension=RiskDimension.CONFIGURATION_RISK.value,
+        source_ids=["SRC-NATIVE-CFG", "SRC-AUDIT"],
+        evidence_ids=["EV-NATIVE-CFG-PRIVATE", "EV-AUDIT-CONFIG-CHANGE"],
+        effective_at="2026-10-08T00:00:00Z",
+        valid_from="2026-10-01T00:00:00Z",
+        valid_to=None,
+    ))
+    c.add_finding(Finding(
+        id="F-PUBCFG-STG",
+        finding_type=FindingType.PUBLIC_ACCESS_CONFIGURATION_CANDIDATE,
+        subject_id="STG-777",
+        statement="Storage STG-777 had a configuration capable of granting public read access during the historical window.",
+        risk_dimension=RiskDimension.DATA_EXPOSURE.value,
+        source_ids=["SRC-NATIVE-CFG"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC"],
+        effective_at="2026-09-20T00:00:00Z",
+        valid_from="2026-09-01T00:00:00Z",
+        valid_to="2026-10-01T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-DATAEXP-STG",
+        finding_type=FindingType.SENSITIVE_DATA_EXPOSURE,
+        subject_id="STG-777",
+        statement="Sensitive data exposure of storage STG-777 is not established.",
+        risk_dimension=RiskDimension.DATA_EXPOSURE.value,
+        source_ids=["SRC-NATIVE-CFG", "SRC-FLOW", "SRC-AUDIT"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-FLOW-STG", "EV-AUDIT-CONFIG-CHANGE"],
+        effective_at="2026-09-20T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-CSPM-STALE",
+        finding_type=FindingType.CSPM_STALE,
+        subject_id="STG-777",
+        statement="CSPM finding CSPM-STG-PUBLIC appears stale relative to native configuration history.",
+        risk_dimension=RiskDimension.CONFIGURATION_RISK.value,
+        source_ids=["SRC-CSPM", "SRC-NATIVE-CFG"],
+        evidence_ids=["EV-CSPM-STG", "EV-NATIVE-CFG-PRIVATE"],
+        effective_at="2026-10-08T00:25:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-LOGGING-STG",
+        finding_type=FindingType.LOGGING_GAP,
+        subject_id="STG-777",
+        statement="Storage access logging was disabled in native configuration snapshots, creating a data-plane visibility gap.",
+        risk_dimension=RiskDimension.LOGGING_GAP.value,
+        source_ids=["SRC-NATIVE-CFG"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE"],
+        effective_at="2026-09-20T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-PUBEP-LB",
+        finding_type=FindingType.PUBLIC_ENDPOINT_CANDIDATE,
+        subject_id="LB-01",
+        statement="Load balancer LB-01 presents a public endpoint candidate via DNS/IP and Internet ingress security group rule.",
+        risk_dimension=RiskDimension.NETWORK_EXPOSURE.value,
+        source_ids=["SRC-NATIVE-INV", "SRC-NATIVE-CFG", "SRC-DNS", "SRC-CT"],
+        evidence_ids=["EV-NATIVE-INV", "EV-DNS-API", "EV-CT-API"],
+        effective_at="2026-10-08T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-IAM-POLICY-READONLY",
+        finding_type=FindingType.IAM_POLICY_OBSERVED,
+        subject_id="ROLE-READONLY",
+        statement="IAM policy P-READONLY permits s3:GetObject/ListBucket on payments-data resources.",
+        risk_dimension=RiskDimension.IDENTITY_RISK.value,
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        effective_at="2026-10-08T00:10:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-IAM-SP",
+        finding_type=FindingType.IAM_EFFECTIVE_ACCESS_CANDIDATE,
+        subject_id="SP-ANALYTICS",
+        statement="Service principal SP-ANALYTICS may have effective read access to STG-777 via ROLE-READONLY, pending deterministic effective-permission evaluation.",
+        risk_dimension=RiskDimension.IDENTITY_RISK.value,
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        effective_at="2026-10-08T00:10:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-PRIV-ROLEBROAD",
+        finding_type=FindingType.PRIVILEGED_IDENTITY_CANDIDATE,
+        subject_id="ROLE-BROAD",
+        statement="ROLE-BROAD has wildcard policy with source-IP condition; privileged status is candidate-only until effective permissions are evaluated.",
+        risk_dimension=RiskDimension.IDENTITY_RISK.value,
+        source_ids=["SRC-IAM"],
+        evidence_ids=["EV-IAM-EXPORT"],
+        effective_at="2026-10-08T00:10:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-MISCONFIG-STG",
+        finding_type=FindingType.MISCONFIGURATION_CANDIDATE,
+        subject_id="STG-777",
+        statement="Historical public-read storage configuration is a misconfiguration candidate absent approved exception evidence.",
+        risk_dimension=RiskDimension.CONFIGURATION_RISK.value,
+        source_ids=["SRC-NATIVE-CFG", "SRC-CSPM"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-CSPM-STG"],
+        effective_at="2026-09-20T00:00:00Z",
+        valid_from="2026-09-01T00:00:00Z",
+        valid_to="2026-10-01T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-VULN-VM",
+        finding_type=FindingType.VULNERABILITY_CONTEXT,
+        subject_id="VM-01",
+        statement="Scanner associates CVE-2026-1234 with VM-01 image component openssl 3.0.x; applicability and exploitability unresolved.",
+        risk_dimension=RiskDimension.VULNERABILITY_RISK.value,
+        source_ids=["SRC-VULN"],
+        evidence_ids=["EV-VULN-VM"],
+        effective_at="2026-10-07T00:00:00Z",
+        specialist_handoff="VULNINT",
+    ))
+    c.add_finding(Finding(
+        id="F-BACKUP-STG",
+        finding_type=FindingType.BACKUP_RISK,
+        subject_id="STG-777",
+        statement="Versioning/backup metadata exists, but restore-test evidence is unavailable; restorability unknown.",
+        risk_dimension=RiskDimension.BACKUP_RISK.value,
+        source_ids=["SRC-NATIVE-CFG", "SRC-NATIVE-INV"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-INV"],
+        effective_at="2026-10-08T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-ENCRYPT-STG",
+        finding_type=FindingType.ENCRYPTION_CONTEXT,
+        subject_id="STG-777",
+        statement="Native configuration indicates encryption at rest and versioning; encryption does not eliminate identity/network exposure risk.",
+        risk_dimension=RiskDimension.CONFIGURATION_RISK.value,
+        source_ids=["SRC-NATIVE-CFG"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE"],
+        effective_at="2026-09-20T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-SHARED-RESP-STG",
+        finding_type=FindingType.SHARED_RESPONSIBILITY_CONTEXT,
+        subject_id="STG-777",
+        statement="Storage public-access configuration and IAM/resource policy are customer responsibilities; underlying provider infrastructure is provider responsibility.",
+        risk_dimension=RiskDimension.CONFIGURATION_RISK.value,
+        source_ids=["SRC-NATIVE-CFG", "SRC-IAM"],
+        evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-IAM-EXPORT"],
+        effective_at="2026-09-20T00:00:00Z",
+    ))
+    c.add_finding(Finding(
+        id="F-COST-CTX",
+        finding_type=FindingType.COST_ANOMALY_CONTEXT,
+        subject_id="A-123456789012",
+        statement="Billing metadata shows modest compute cost increase; this is context only and not compromise evidence.",
+        risk_dimension=RiskDimension.INCIDENT_RISK.value,
+        source_ids=["SRC-BILLING"],
+        evidence_ids=["EV-BILLING-COST"],
+        effective_at="2026-10-08T00:35:00Z",
+    ))
+
+    # Hypotheses
+    c.hypotheses = [
+        Hypothesis(
+            id="H-STG-INTENTIONAL-PUBLIC",
+            statement="Storage STG-777 was intentionally public during the historical window.",
+            kind="PUBLIC_INTENT",
+            supporting_event_ids=["F-PUBCFG-STG"],
+            supporting_evidence_ids=["EV-NATIVE-CFG-PUBLIC"],
+            contradicting_evidence_ids=["EV-NATIVE-CFG-PRIVATE"],
+            assumptions=["Public access may serve a legitimate public dataset or API."],
+            predictions=["Change ticket/approval and public data classification would support intentional public design."],
+            falsification_conditions=[
+                "No approved exception exists.",
+                "Data classification is confidential/regulated.",
+                "Object-level logs show unintended anonymous access.",
+            ],
+            status=HypothesisStatus.POSSIBLE,
+            confidence=0.35,
+            limitations=["Intent cannot be established from configuration alone."],
+        ),
+        Hypothesis(
+            id="H-STG-UNINTENTIONAL-PUBLIC",
+            statement="Storage STG-777 was unintentionally public during the historical window.",
+            kind="PUBLIC_INTENT",
+            supporting_event_ids=["F-MISCONFIG-STG", "F-LOGGING-STG"],
+            supporting_evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-CSPM-STG"],
+            contradicting_evidence_ids=[],
+            assumptions=["Production payments data with confidential tag claim is unlikely to be intentionally public."],
+            predictions=["Change management would show no approval for public access; later remediation supports unintended exposure hypothesis."],
+            falsification_conditions=[
+                "Approved exception/public dataset evidence exists.",
+                "Object classification shows public data.",
+                "Architecture docs indicate public read requirement.",
+            ],
+            status=HypothesisStatus.POSSIBLE,
+            confidence=0.55,
+            limitations=["Misconfiguration candidate is not breach."],
+        ),
+        Hypothesis(
+            id="H-CSPM-STALE",
+            statement="CSPM public finding is stale relative to native configuration history.",
+            kind="SOURCE_QUALITY",
+            supporting_event_ids=["F-CSPM-STALE"],
+            supporting_evidence_ids=["EV-CSPM-STG", "EV-NATIVE-CFG-PRIVATE", "EV-AUDIT-CONFIG-CHANGE"],
+            contradicting_evidence_ids=[],
+            assumptions=["Native configuration history is more authoritative than cached scanner state for temporal configuration."],
+            predictions=["Re-run CSPM after 2026-10-01 would no longer report public read."],
+            falsification_conditions=[
+                "Native config export is wrong.",
+                "Resource was recreated with public config after 2026-10-01.",
+                "CSPM evaluated a different resource version.",
+            ],
+            status=HypothesisStatus.PROBABLE,
+            confidence=0.82,
+            limitations=["Staleness does not erase historical public configuration fact."],
+        ),
+        Hypothesis(
+            id="H-LB-AUTHENTICATED-SERVICE",
+            statement="Public endpoint LB-01 serves an authenticated application rather than anonymous public data.",
+            kind="EXPOSURE_INTERPRETATION",
+            supporting_event_ids=["F-PUBEP-LB"],
+            supporting_evidence_ids=["EV-DNS-API", "EV-CT-API"],
+            contradicting_evidence_ids=[],
+            assumptions=["TLS certificate and load balancer suggest web service, but auth model unknown."],
+            predictions=["Authorized service logs/banner/auth tests would show authentication required."],
+            falsification_conditions=[
+                "Anonymous sensitive endpoints are confirmed.",
+                "Public data download is evidenced.",
+                "WAF/auth logs show unauthenticated successful access to protected objects.",
+            ],
+            status=HypothesisStatus.UNRESOLVED,
+            confidence=0.45,
+            limitations=["No active probing performed."],
+        ),
+        Hypothesis(
+            id="H-IAM-EFFECTIVE-READ",
+            statement="SP-ANALYTICS has effective read access to STG-777 via ROLE-READONLY.",
+            kind="IAM_EFFECTIVE",
+            supporting_event_ids=["F-IAM-SP", "F-IAM-POLICY-READONLY"],
+            supporting_evidence_ids=["EV-IAM-EXPORT"],
+            contradicting_evidence_ids=[],
+            assumptions=["Attachment/trust/policy are current and no boundary/deny/condition blocks access."],
+            predictions=["Deterministic IAM evaluator would confirm or deny effective access."],
+            falsification_conditions=[
+                "Permission boundary denies access.",
+                "Resource policy denies SP-ANALYTICS.",
+                "Session conditions/network context block access.",
+                "Role attachment is stale.",
+            ],
+            status=HypothesisStatus.UNRESOLVED,
+            confidence=0.50,
+            limitations=["No role assumption or credential test performed."],
+        ),
+    ]
+
+    c.prepare()
+    return c
+
+
+# =====================================================================
+# RESULT BUILDER
+# =====================================================================
+
+def graph_version_hash(c: CloudInt) -> str:
+    seed_obj = {
+        "resources": sorted((rid, r.provider, r.tenant_id, r.account_id, r.resource_type) for rid, r in c.resources.items()),
+        "configs": sorted((cid, cs.resource_id, cs.config_type, cs.valid_from, cs.valid_to) for cid, cs in c.config_snapshots.items()),
+        "findings": sorted((fid, f.finding_type.value, f.subject_id, f.verification_state.value, round(float(f.confidence), 3)) for fid, f in c.findings.items()),
+    }
+    return sha256_short(json.dumps(jsonable(seed_obj), sort_keys=True))
+
+
+def build_source_graph(c: CloudInt) -> Dict[str, Any]:
+    edges = []
+    for src in c.sources.values():
+        if src.derived_from:
+            edges.append({
+                "source": src.derived_from,
+                "target": src.id,
+                "relationship_type": "DERIVED_FROM",
+            })
+    return {
+        "nodes": [s.id for s in c.sources.values()],
+        "edges": edges,
+    }
+
+
+def build_source_dependency_graph(c: CloudInt) -> Dict[str, List[str]]:
+    families: Dict[str, List[str]] = defaultdict(list)
+    for sid in c.sources:
+        fam = c.get_source_family(sid) or "UNKNOWN"
+        families[fam].append(sid)
+    return {k: sorted(v) for k, v in families.items()}
+
+
+def build_config_history_payload(c: CloudInt) -> List[Dict[str, Any]]:
+    out = []
+    for cs in sorted(c.config_snapshots.values(), key=lambda x: (x.resource_id, dt_or_min(x.valid_from))):
+        out.append({
+            "config_snapshot_id": cs.id,
+            "resource_id": cs.resource_id,
+            "config_type": cs.config_type,
+            "attributes": cs.attributes,
+            "valid_from": cs.valid_from,
+            "valid_to": cs.valid_to,
+            "observed_at": cs.observed_at,
+            "source_id": cs.source_id,
+            "evidence_id": cs.evidence_id,
+            "parser_version": cs.parser_version,
+            "confidence": cs.confidence,
+            "limitations": cs.limitations,
+        })
+    return out
+
+
+def build_iam_graph(c: CloudInt) -> Dict[str, Any]:
+    nodes = []
+    edges = []
+
+    for ident in c.identities.values():
+        nodes.append({"id": ident.id, "type": "Identity", "identity_type": ident.identity_type.value})
+    for role in c.roles.values():
+        nodes.append({"id": role.id, "type": "Role", "role_name": role.role_name})
+    for pol in c.policies.values():
+        nodes.append({"id": pol.id, "type": "Policy", "policy_name": pol.policy_name})
+
+    for att in c.role_attachments.values():
+        edges.append({
+            "source": att.identity_id,
+            "target": att.role_id,
+            "relationship_type": "ASSIGNED_ROLE",
+            "valid_from": att.valid_from,
+            "valid_to": att.valid_to,
+        })
+    for tr in c.trust_relationships.values():
+        edges.append({
+            "source": tr.from_identity_id,
+            "target": tr.to_role_id,
+            "relationship_type": "TRUSTS_CAN_ASSUME",
+            "conditions": tr.conditions,
+            "valid_from": tr.valid_from,
+            "valid_to": tr.valid_to,
+        })
+    for pol in c.policies.values():
+        for target in pol.attached_to:
+            edges.append({
+                "source": pol.id,
+                "target": target,
+                "relationship_type": "ATTACHED_TO",
+            })
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def build_exposure_payload(c: CloudInt) -> Dict[str, Any]:
+    endpoints = []
+    for ep in c.network_endpoints.values():
+        endpoints.append({
+            "endpoint_id": ep.id,
+            "resource_id": ep.resource_id,
+            "endpoint_type": ep.endpoint_type,
+            "public": ep.public,
+            "ip": ep.ip,
+            "dns_name": ep.dns_name,
+            "load_balancer_id": ep.load_balancer_id,
+            "target_resource_ids": ep.target_resource_ids,
+            "valid_from": ep.valid_from,
+            "valid_to": ep.valid_to,
+            "source_ids": ep.source_ids,
+            "evidence_ids": ep.evidence_ids,
+            "confidence": ep.confidence,
+            "limitations": ep.limitations,
+        })
+
+    storage_cfg_candidates = [
+        f for f in c.findings.values()
+        if f.finding_type == FindingType.PUBLIC_ACCESS_CONFIGURATION_CANDIDATE
+    ]
+    sensitive_exposure = [
+        f for f in c.findings.values()
+        if f.finding_type == FindingType.SENSITIVE_DATA_EXPOSURE
+    ]
+
+    return {
+        "network_endpoints": endpoints,
+        "public_access_configuration_candidates": storage_cfg_candidates,
+        "sensitive_data_exposure_findings": sensitive_exposure,
+        "guardrails": [
+            "Public endpoint != public service.",
+            "Public service != anonymous access.",
+            "Public access configuration != public data.",
+            "Public data != breach.",
+            "No bucket listing/download/upload/ACL test performed.",
+        ],
+    }
+
+
+def build_result(c: CloudInt, status: Status) -> Dict[str, Any]:
+    dual = c.dual_ai_review()
+    summary = c.analyst_summary(dual)
+    source_families = build_source_dependency_graph(c)
+
+    finding_independence = {
+        fid: c.independence_state(f.source_ids)
+        for fid, f in c.findings.items()
+    }
+
+    supported_facts = [f for f in c.findings.values() if f.verification_state == VerificationState.SUPPORTED]
+    partial_facts = [f for f in c.findings.values() if f.verification_state == VerificationState.PARTIALLY_SUPPORTED]
+    disputed_facts = [f for f in c.findings.values() if f.verification_state == VerificationState.DISPUTED]
+    inconclusive_facts = [f for f in c.findings.values() if f.verification_state == VerificationState.INCONCLUSIVE]
+
+    replay_manifest = {
+        "generated_at": now_iso(),
+        "pipeline_version": PIPELINE_VERSION,
+        "graph_version": graph_version_hash(c),
+        "core_principle": (
+            "CLOUD REFERENCE -> PROVIDER RESOLUTION -> TENANT/ACCOUNT RESOLUTION -> RESOURCE INVENTORY -> "
+            "RESOURCE IDENTITY -> OWNERSHIP/RESPONSIBILITY -> IAM/TRUST -> NETWORK/EXPOSURE -> CONFIGURATION -> "
+            "TELEMETRY -> TEMPORAL VALIDATION -> SOURCE RELIABILITY -> SOURCE INDEPENDENCE -> FACT GATE -> CLOUD RISK ASSESSMENT"
+        ),
+        "temporal_rule": "Current configuration must not contaminate historical incident analysis; config eras preserved.",
+        "iam_rule": "IAM policy observation != effective access; trust != successful assumption; role name != privilege.",
+        "exposure_rule": "Public endpoint != public service != anonymous access != public data != breach.",
+        "source_rule": "CSPM/SIEM/CNAPP derivatives are not independent corroboration of native configuration.",
+        "policy_exclusions": [
+            "No cloud credential use/testing.",
+            "No token redemption.",
+            "No role assumption.",
+            "No bucket listing/download/upload.",
+            "No private object access.",
+            "No metadata/SSRF exploitation.",
+            "No IAM/firewall/storage modification.",
+            "No log deletion/disabling.",
+            "No cross-tenant access.",
+            "No unauthorized scanning.",
+        ],
+        "source_lineage": source_families,
+        "config_history": build_config_history_payload(c),
+        "finding_independence": finding_independence,
+    }
+
+    return {
+        "case_id": c.case.case_id,
+        "task_id": c.case.task_id,
+        "objective": c.case.objective,
+        "questions": c.case.questions,
+        "scope": c.case.scope,
+        "authorization": c.case.authorization,
+        "status": status.value,
+        "source_ids": sorted(c.sources.keys()),
+        "evidence_ids": sorted(c.evidence.keys()),
+        "cloud_providers": sorted({r.provider for r in c.resources.values()}),
+        "organizations": [c.case.tenant_id] if c.case.tenant_id else [],
+        "tenants": sorted({r.tenant_id for r in c.resources.values()}),
+        "accounts": sorted({r.account_id for r in c.resources.values()}),
+        "subscriptions": sorted({r.subscription_id for r in c.resources.values() if r.subscription_id}),
+        "projects": sorted({r.project_id for r in c.resources.values() if r.project_id}),
+        "folders": [],
+        "resource_groups": sorted({r.resource_group for r in c.resources.values() if r.resource_group}),
+        "regions": sorted({r.region for r in c.resources.values() if r.region}),
+        "zones": sorted({r.zone for r in c.resources.values() if r.zone}),
+        "resources": list(c.resources.values()),
+        "resource_types": sorted({r.resource_type for r in c.resources.values()}),
+        "resource_states": {rid: r.state.value for rid, r in c.resources.items()},
+        "resource_eras": build_config_history_payload(c),
+        "environments": {rid: r.environment.value for rid, r in c.resources.items()},
+        "business_owners": {rid: r.business_owner for rid, r in c.resources.items()},
+        "technical_owners": {rid: r.technical_owner for rid, r in c.resources.items()},
+        "identities": list(c.identities.values()),
+        "groups": [],
+        "roles": list(c.roles.values()),
+        "policies": list(c.policies.values()),
+        "effective_permissions": [
+            f for f in c.findings.values()
+            if f.finding_type in {
+                FindingType.IAM_EFFECTIVE_ACCESS_CANDIDATE,
+                FindingType.PRIVILEGED_IDENTITY_CANDIDATE,
+            }
+        ],
+        "trust_relationships": list(c.trust_relationships.values()),
+        "federation": [],
+        "service_principals": [i for i in c.identities.values() if i.identity_type == IdentityType.SERVICE_PRINCIPAL],
+        "managed_identities": [i for i in c.identities.values() if i.identity_type == IdentityType.MANAGED_IDENTITY],
+        "workload_identities": [i for i in c.identities.values() if i.identity_type == IdentityType.WORKLOAD_IDENTITY],
+        "privileged_identities": [f for f in c.findings.values() if f.finding_type == FindingType.PRIVILEGED_IDENTITY_CANDIDATE],
+        "compute_resources": [r for r in c.resources.values() if r.resource_type == "COMPUTE_INSTANCE"],
+        "serverless_resources": [],
+        "containers": [],
+        "kubernetes_clusters": [],
+        "registries": [],
+        "images": [],
+        "storage_resources": [r for r in c.resources.values() if r.resource_type == "OBJECT_STORAGE"],
+        "databases": [],
+        "vpcs": [],
+        "vnets": [],
+        "subnets": [],
+        "security_groups": list(c.security_group_rules.values()),
+        "firewalls": [],
+        "route_tables": [],
+        "peerings": [],
+        "private_endpoints": [],
+        "public_endpoints": [ep for ep in c.network_endpoints.values() if ep.public],
+        "load_balancers": [r for r in c.resources.values() if r.resource_type == "LOAD_BALANCER"],
+        "cdns": [],
+        "dns_zones": [],
+        "certificates": [],
+        "secret_objects": [],
+        "key_management": [],
+        "logging_sources": [s.id for s in c.sources.values() if s.source_type in {SourceType.CLOUD_AUDIT_LOG, SourceType.CLOUD_FLOW_LOG}],
+        "audit_events": list(c.audit_events.values()),
+        "flow_logs": list(c.flow_events.values()),
+        "configurations": build_config_history_payload(c),
+        "config_drift": [
+            {
+                "resource_id": "STG-777",
+                "from": "public_read=true",
+                "to": "public_read=false",
+                "changed_at": "2026-10-01T00:00:00Z",
+                "source": "native configuration history + audit event",
+            }
+        ],
+        "cspm_findings": list(c.cspm_findings.values()),
+        "benchmark_context": [],
+        "exceptions": [],
+        "encryption_context": [f for f in c.findings.values() if f.finding_type == FindingType.ENCRYPTION_CONTEXT],
+        "backup_context": [f for f in c.findings.values() if f.finding_type == FindingType.BACKUP_RISK],
+        "data_classification": {rid: r.data_classification_candidate for rid, r in c.resources.items()},
+        "data_residency": {
+            "STG-777": "primary_region_us_east_1_replication_unknown",
+            "VM-01": "primary_region_us_east_1",
+            "LB-01": "regional_load_balancer",
+        },
+        "external_exposure": build_exposure_payload(c),
+        "vulnerability_context": [f for f in c.findings.values() if f.finding_type == FindingType.VULNERABILITY_CONTEXT],
+        "incident_context": [f for f in c.findings.values() if f.finding_type in {FindingType.INCIDENT_SIGNAL, FindingType.BREACH_CONTEXT}],
+        "breach_context": "NOT_ESTABLISHED",
+        "supply_chain_context": [],
+        "shared_responsibility": [f for f in c.findings.values() if f.finding_type == FindingType.SHARED_RESPONSIBILITY_CONTEXT],
+        "cost_context": [f for f in c.findings.values() if f.finding_type == FindingType.COST_ANOMALY_CONTEXT],
+        "timeline_updates": [
+            {
+                "time": "2026-09-01T00:00:00Z",
+                "event": "Storage public-read configuration era begins.",
+                "source_ids": ["SRC-NATIVE-CFG"],
+            },
+            {
+                "time": "2026-09-20T00:00:00Z",
+                "event": "CSPM effective time for public-read finding.",
+                "source_ids": ["SRC-CSPM"],
+            },
+            {
+                "time": "2026-10-01T00:00:00Z",
+                "event": "Storage configuration changes to private/block public access.",
+                "source_ids": ["SRC-NATIVE-CFG", "SRC-AUDIT"],
+            },
+            {
+                "time": "2026-10-08T00:25:00Z",
+                "event": "CSPM retrieved still reports public; stale/contradiction detected.",
+                "source_ids": ["SRC-CSPM"],
+            },
+        ],
+        "observations": list(c.evidence.values()),
+        "candidate_facts": list(c.findings.values()),
+        "supported_facts": supported_facts,
+        "partial_facts": partial_facts,
+        "disputed_facts": disputed_facts,
+        "inconclusive_facts": inconclusive_facts,
+        "source_reliability": {sid: s.reliability for sid, s in c.sources.items()},
+        "source_bias": {sid: s.notes for sid, s in c.sources.items()},
+        "source_limitations": {sid: [s.notes] for sid, s in c.sources.items() if s.notes},
+        "source_pedigree": {sid: c.get_source_family(sid) for sid in c.sources},
+        "source_independence": {
+            "source_families": source_families,
+            "finding_independence": finding_independence,
+        },
+        "contradictions": c.contradictions,
+        "hypotheses": c.hypotheses,
+        "falsification_results": [
+            {
+                "hypothesis_id": h.id,
+                "status": h.status.value,
+                "falsification_conditions": h.falsification_conditions,
+                "limitations": h.limitations,
+            }
+            for h in c.hypotheses
+        ],
+        "risk_dimensions": c.risk_dimensions,
+        "privacy_flags": [
+            PrivacyFlag.CASE_SCOPED.value,
+            PrivacyFlag.AUTHORIZED_TENANT_ONLY.value,
+            PrivacyFlag.NO_CROSS_TENANT_ACCESS.value,
+            PrivacyFlag.NO_CREDENTIAL_USE.value,
+            PrivacyFlag.NO_BUCKET_ABUSE.value,
+            PrivacyFlag.NO_PRIVATE_OBJECT_DOWNLOAD.value,
+            PrivacyFlag.NO_IAM_MODIFICATION.value,
+            PrivacyFlag.NO_LOG_DELETION.value,
+            PrivacyFlag.NO_ACTIVE_PROBING.value,
+            PrivacyFlag.NO_METADATA_EXPLOITATION.value,
+        ],
+        "legal_flags": [
+            "Human/legal review required before breach notification, regulated data exposure conclusion, or production remediation."
+        ],
+        "unknowns": [
+            "Sensitive data exposure unknown due absent data-plane logs/classification.",
+            "Breach not established.",
+            "Effective IAM permissions unresolved.",
+            "Public service listening unconfirmed.",
+            "Backup restorability unknown.",
+            "Vulnerability applicability unknown.",
+        ],
+        "knowledge_gaps": c.gaps,
+        "recommended_next_actions": c.actions,
+        "specialist_handoffs": c.handoffs,
+        "limitations": [
+            "Local synthetic demo; no live cloud API access.",
+            "Passive-first; no active probing or credential testing.",
+            "Defensive recommendations only; operational changes require human approval.",
+            "CSPM/SIEM derivatives are not independent corroboration of native configuration.",
+            "Historical configuration must be used for historical incident analysis.",
+        ] + c.validation_errors,
+        "analyst_summary": summary,
+        "dual_ai_review": dual,
+        "replay_manifest": replay_manifest,
+        "iam_graph": build_iam_graph(c),
+        "source_graph": build_source_graph(c),
+        "source_dependency_graph": source_families,
+    }
+
+
+# =====================================================================
+# PIPELINES
+# =====================================================================
+
+def run_sample_pipeline() -> Dict[str, Any]:
+    c = build_sample_cloudint()
+    return build_result(c, Status.PARTIAL)
+
+
+def run_unconfigured_pipeline(case: Case) -> Dict[str, Any]:
+    c = CloudInt(case)
+
+    c.gaps.append(KnowledgeGap(
+        id="GAP-NO-EVIDENCE",
+        gap_type=GapType.RESOURCE_UNRESOLVED,
+        description="No authorized cloud inventory, configuration, IAM, audit, flow, CSPM, or public metadata corpus is configured.",
+        importance="HIGH",
+        recommended_source="Connect authorized read-only cloud intelligence sources or provide sanitized local JSON evidence corpus.",
+        specialist="CLOUDINT",
+        expected_information_value=0.95,
+    ))
+
+    c.actions = [NextAction(
+        id="ACT-CONFIGURE-EVIDENCE",
+        description=(
+            "Configure authorized passive cloud sources or supply sanitized local evidence. "
+            "Do not use/test credentials, assume roles, access buckets, exploit metadata/SSRF, "
+            "modify IAM/logs, or cross tenant boundaries."
+        ),
+        priority=1,
+        privacy_impact="LOW",
+        expected_gain=0.95,
+        specialist=None,
+        requires_human_approval=False,
+    )]
+
+    c.handoffs = []
+    c.recommendations = []
+    c.risk_dimensions = {dim.value: "UNKNOWN_NO_EVIDENCE" for dim in RiskDimension}
+
+    dual = {
+        "primary_cloud_analyst": "No evidence available.",
+        "independent_cloud_skeptic_issues": [
+            "No sources configured.",
+            "No tenant/resource resolution possible.",
+            "No configuration history available.",
+            "No IAM/exposure conclusion possible.",
+        ],
+        "verdict": "INSUFFICIENT_EVIDENCE",
+        "note": "AI agreement is not independent cloud source corroboration.",
+    }
+
+    summary = (
+        "CLOUD UNRESOLVED: No configured evidence corpus. "
+        "No tenants, resources, identities, permissions, exposures, or breaches were fabricated. "
+        "Provide authorized passive cloud sources or run sample mode."
+    )
+
+    result = build_result(c, Status.BLOCKED_CONFIGURATION)
+    result["analyst_summary"] = summary
+    result["dual_ai_review"] = dual
+    return result
+
+
+def blocked_policy_result(case: Case, violations: List[Dict[str, str]]) -> Dict[str, Any]:
+    return {
+        "case_id": case.case_id,
+        "task_id": case.task_id,
+        "objective": case.objective,
+        "status": Status.BLOCKED_POLICY.value,
+        "policy_violations": violations,
+        "message": (
+            "Prohibited cloud-intelligence request detected. CLOUDINT supports authorized defensive, "
+            "passive-first cloud intelligence only. It does not use/test credentials, assume roles, "
+            "access buckets, download private objects, exploit metadata/SSRF, modify IAM/logs/network, "
+            "cross tenant boundaries, or perform unauthorized scanning."
+        ),
+        "lawful_alternatives": [
+            "Use authorized read-only inventory/configuration exports.",
+            "Use native configuration history for temporal analysis.",
+            "Use IAM exports for policy observation, not effective-access proof.",
+            "Use audit/flow logs for defensive telemetry.",
+            "Hand off credential exposure to CREDINT and vulnerability applicability to VULNINT.",
+            "Require human approval for remediation or operational changes.",
+        ],
+        "privacy_flags": [
+            PrivacyFlag.NO_CREDENTIAL_USE.value,
+            PrivacyFlag.NO_BUCKET_ABUSE.value,
+            PrivacyFlag.NO_CROSS_TENANT_ACCESS.value,
+            PrivacyFlag.NO_METADATA_EXPLOITATION.value,
+            PrivacyFlag.NO_IAM_MODIFICATION.value,
+        ],
+        "limitations": [
+            "No cloud analysis performed.",
+            "No resources or findings fabricated.",
+            "No private data accessed.",
+        ],
+    }
+
+
+def run_pipeline(case: Case) -> Dict[str, Any]:
+    text = " ".join(
+        [
+            case.objective,
+            *case.questions,
+            *case.resources,
+            case.tenant_id or "",
+            case.account_id or "",
+            case.authorization or "",
+            " ".join(case.scope),
+        ]
+    )
+    violations = policy_guard(text)
+    if violations:
+        return blocked_policy_result(case, violations)
+
+    if case.sample:
+        return run_sample_pipeline()
+
+    return run_unconfigured_pipeline(case)
+
+
+# =====================================================================
+# CLI
+# =====================================================================
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "TRACEATLAS CLOUDINT local defensive passive-first cloud intelligence pipeline. "
+            "Sample mode uses synthetic authorized-cloud-record-style data."
+        )
+    )
+    parser.add_argument("--sample", action="store_true", help="Run built-in synthetic CLOUDINT sample.")
+    parser.add_argument("--objective", help="Defensive cloud intelligence objective.")
+    parser.add_argument("--question", action="append", default=[], help="Analytic question. Repeatable.")
+    parser.add_argument("--provider", help="Cloud provider hint.")
+    parser.add_argument("--tenant", help="Tenant ID.")
+    parser.add_argument("--account", help="Account ID.")
+    parser.add_argument("--subscription", help="Subscription ID.")
+    parser.add_argument("--project", help="Project ID.")
+    parser.add_argument("--resource", action="append", default=[], help="Resource ID. Repeatable.")
+    parser.add_argument("--time-range", help="Time range hint, e.g. 2026-09-01/2026-10-08.")
+
+    args = parser.parse_args()
+
+    if args.sample or not args.objective:
+        case = sample_case()
+    else:
+        case = Case(
+            case_id=new_id("CASE-", args.objective),
+            task_id=new_id("TASK-", args.objective),
+            objective=args.objective,
+            questions=args.question,
+            provider=args.provider,
+            tenant_id=args.tenant,
+            account_id=args.account,
+            subscription_id=args.subscription,
+            project_id=args.project,
+            resources=args.resource,
+            time_range=args.time_range,
+            sample=False,
+        )
+
+    result = run_pipeline(case)
+    print(json.dumps(jsonable(result), indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

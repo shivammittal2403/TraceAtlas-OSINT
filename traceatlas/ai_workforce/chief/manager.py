@@ -121,6 +121,10 @@ class ChiefIntelligenceManager:
         for ent in res.entities:
             self.memory.upsert_entity(ent.kind, ent.value)
         for cf in res.candidate_facts:
+            # Assess source bias/reliability before the gate checks coverage.
+            # The gate still validates citations and rejects missing evidence.
+            for source_id in cf.source_ids:
+                self._ensure_source_assessments(source_id)
             cand = FactCandidate(
                 statement=cf.statement, case_id=self.memory.case_id,
                 observation_ids=list(cf.observation_ids),

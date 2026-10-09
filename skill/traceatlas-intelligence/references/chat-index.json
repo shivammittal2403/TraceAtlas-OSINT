@@ -1,0 +1,477 @@
+{
+  "messages": [
+    {
+      "message_index": 0,
+      "role": "user",
+      "domain": "AISINT",
+      "visible_text_characters": 77783,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 1,
+      "role": "assistant",
+      "domain": "AISINT",
+      "visible_text_characters": 1983,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 2,
+      "role": "user",
+      "domain": "AISINT",
+      "visible_text_characters": 81519,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 3,
+      "role": "assistant",
+      "domain": "AISINT",
+      "visible_text_characters": 123997,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 4,
+      "role": "user",
+      "domain": "METINT",
+      "visible_text_characters": 68666,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 5,
+      "role": "assistant",
+      "domain": "METINT",
+      "visible_text_characters": 126004,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 6,
+      "role": "user",
+      "domain": "RADINT",
+      "visible_text_characters": 72815,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 7,
+      "role": "assistant",
+      "domain": "RADINT",
+      "visible_text_characters": 104943,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 8,
+      "role": "user",
+      "domain": "SEISINT",
+      "visible_text_characters": 74227,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 9,
+      "role": "assistant",
+      "domain": "SEISINT",
+      "visible_text_characters": 121802,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 10,
+      "role": "user",
+      "domain": "ENVINT",
+      "visible_text_characters": 73427,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 11,
+      "role": "assistant",
+      "domain": "ENVINT",
+      "visible_text_characters": 247627,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 12,
+      "role": "user",
+      "domain": "LOCINT",
+      "visible_text_characters": 78512,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 13,
+      "role": "assistant",
+      "domain": "LOCINT",
+      "visible_text_characters": 138059,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 14,
+      "role": "user",
+      "domain": "MOBINT",
+      "visible_text_characters": 70921,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 15,
+      "role": "assistant",
+      "domain": "MOBINT",
+      "visible_text_characters": 137917,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 16,
+      "role": "user",
+      "domain": "TRANSPORTINT",
+      "visible_text_characters": 75016,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 17,
+      "role": "assistant",
+      "domain": "TRANSPORTINT",
+      "visible_text_characters": 138351,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 18,
+      "role": "user",
+      "domain": "TRANSPORTINT",
+      "visible_text_characters": 15,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 19,
+      "role": "assistant",
+      "domain": "TRANSPORTINT",
+      "visible_text_characters": 35036,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 20,
+      "role": "user",
+      "domain": "NEWSINT",
+      "visible_text_characters": 78573,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 21,
+      "role": "assistant",
+      "domain": "NEWSINT",
+      "visible_text_characters": 147844,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 22,
+      "role": "user",
+      "domain": "NARRATIVEINT",
+      "visible_text_characters": 74557,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 23,
+      "role": "assistant",
+      "domain": "NARRATIVEINT",
+      "visible_text_characters": 147165,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 24,
+      "role": "user",
+      "domain": "NARRATIVEINT",
+      "visible_text_characters": 35,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 25,
+      "role": "assistant",
+      "domain": "NARRATIVEINT",
+      "visible_text_characters": 23506,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 26,
+      "role": "user",
+      "domain": "DOCINT",
+      "visible_text_characters": 69843,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 27,
+      "role": "assistant",
+      "domain": "DOCINT",
+      "visible_text_characters": 14488,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 28,
+      "role": "user",
+      "domain": "EMAILINT",
+      "visible_text_characters": 69104,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 29,
+      "role": "assistant",
+      "domain": "EMAILINT",
+      "visible_text_characters": 55065,
+      "selection": "content_list.phase=answer"
+    },
+    {
+      "message_index": 30,
+      "role": "user",
+      "domain": "EMAILINT",
+      "visible_text_characters": 69104,
+      "selection": "user.content"
+    },
+    {
+      "message_index": 31,
+      "role": "assistant",
+      "domain": "EMAILINT",
+      "visible_text_characters": 55065,
+      "selection": "content_list.phase=answer"
+    }
+  ],
+  "draft_syntax_checks": [
+    {
+      "message_index": 1,
+      "domain": "AISINT",
+      "closed_python_blocks": [],
+      "unclosed_code_fence": true,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 3,
+      "domain": "AISINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 3221,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 5,
+      "domain": "METINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 3000,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 7,
+      "domain": "RADINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 2609,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 9,
+      "domain": "SEISINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 2839,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 11,
+      "domain": "ENVINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 1953,
+          "status": "syntax_error_or_continuation",
+          "line": 1949,
+          "error": "invalid syntax"
+        },
+        {
+          "block": 1,
+          "lines": 3414,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 13,
+      "domain": "LOCINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 3127,
+          "status": "syntax_error_or_continuation",
+          "line": 694,
+          "error": "invalid syntax"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 15,
+      "domain": "MOBINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 3180,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 17,
+      "domain": "TRANSPORTINT",
+      "closed_python_blocks": [],
+      "unclosed_code_fence": true,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 19,
+      "domain": "TRANSPORTINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 7,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        },
+        {
+          "block": 1,
+          "lines": 23,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        },
+        {
+          "block": 2,
+          "lines": 18,
+          "status": "syntax_valid_not_executed"
+        },
+        {
+          "block": 3,
+          "lines": 745,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 21,
+      "domain": "NEWSINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 3281,
+          "status": "syntax_error_or_continuation",
+          "line": 1209,
+          "error": "unmatched ')'"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 23,
+      "domain": "NARRATIVEINT",
+      "closed_python_blocks": [],
+      "unclosed_code_fence": true,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 25,
+      "domain": "NARRATIVEINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 2,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        },
+        {
+          "block": 1,
+          "lines": 2,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        },
+        {
+          "block": 2,
+          "lines": 1,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        },
+        {
+          "block": 3,
+          "lines": 1,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        },
+        {
+          "block": 4,
+          "lines": 428,
+          "status": "syntax_error_or_continuation",
+          "line": 1,
+          "error": "unexpected indent"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 27,
+      "domain": "DOCINT",
+      "closed_python_blocks": [],
+      "unclosed_code_fence": true,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 29,
+      "domain": "EMAILINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 1332,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    },
+    {
+      "message_index": 31,
+      "domain": "EMAILINT",
+      "closed_python_blocks": [
+        {
+          "block": 0,
+          "lines": 1332,
+          "status": "syntax_valid_not_executed"
+        }
+      ],
+      "unclosed_code_fence": false,
+      "runtime_status": "not_executed_not_integrated"
+    }
+  ],
+  "note": "Read user messages and visible answers only; do not load internal reasoning phases."
+}

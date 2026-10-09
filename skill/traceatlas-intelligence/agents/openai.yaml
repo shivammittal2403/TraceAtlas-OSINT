@@ -1,0 +1,4 @@
+interface:
+  display_name: "TraceAtlas Intelligence"
+  short_description: "Restore and govern TraceAtlas intelligence workflows"
+  default_prompt: "Use $traceatlas-intelligence to restore TraceAtlas context, inspect current main, and plan an evidence-backed investigation within the authorized scope."

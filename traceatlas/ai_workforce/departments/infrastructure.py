@@ -15,6 +15,7 @@ from traceatlas.ai_workforce.employee import Employee, JobDescription, ModelPoli
 from traceatlas.ai_workforce.manager import DepartmentManager
 from traceatlas.ai_workforce.result import CandidateFactPayload, EntityMention, RelationshipMention
 from traceatlas.trust.case_memory import CaseMemory
+from traceatlas.trust.model import SourceRecord
 
 
 def _ev_id(domain: str, kind: str, value: str) -> str:

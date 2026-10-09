@@ -1,0 +1,210 @@
+{
+  "schema_version": "1.0.0",
+  "sources": [
+    {
+      "uploaded_name": "Pasted text(20261009-123432).txt",
+      "path": "references/repository-master-prompt.txt",
+      "bytes": 87386,
+      "sha256": "bc66e3f9b65f6b49b1dcb466e702e1fc5651302420ab9138a2801d519f40cbf8",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "TraceAtlas_Graph (1).graphml",
+      "path": "references/memory-graph-copy.graphml",
+      "bytes": 174488,
+      "sha256": "fcd6f53d00a178a83be09f64430b0ba87e1ac8c938df0c6b5c2391f0cd09491b",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "TraceAtlas_Graph(1).graphml",
+      "path": "references/memory-graph.graphml",
+      "bytes": 174488,
+      "sha256": "fcd6f53d00a178a83be09f64430b0ba87e1ac8c938df0c6b5c2391f0cd09491b",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "NEXT_CHAT_CONTEXT(1).txt",
+      "path": "references/session-context.txt",
+      "bytes": 15949,
+      "sha256": "46737eac65f222e42aec18ab59f8c1369378a8f0de3a6f6113357af56a7decf2",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "TraceAtlas_COMPLETE_Conversation_Handover(1).md",
+      "path": "references/conversation-handover.md",
+      "bytes": 33293,
+      "sha256": "6e471570e15075473a48c03bc266aa7a959c12881052fb4cb0fe11115011e326",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "TraceAtlas_COMPLETE_Graph_Memory(1).json",
+      "path": "references/graph-memory.json",
+      "bytes": 250363,
+      "sha256": "af88d7ba4f6be9793d64207f1934be335b210b26e275d00d0bde11670b8abdc9",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "chat-export-1791480686575.json",
+      "path": "references/chat-export.json",
+      "bytes": 7043462,
+      "sha256": "270e2ede3ce4220cc2aac6e0f85e144eb388e311c39db08332d2abb87640ed39",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted markdown(20261009-125117).md",
+      "path": "references/repository-master-prompt-flattened.md",
+      "bytes": 83324,
+      "sha256": "ac1c737bce85c7f1b95b77894bc041c6b1aae9c2fb4bf39b4b7ca8503fb97213",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text(20261009-125521).txt",
+      "path": "references/academicint-incomplete-python.txt",
+      "bytes": 163328,
+      "sha256": "83acfe121a526f8bda04f1132c0e45e140d8f86aea3e7cde544cc2849fd23bb4",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text(20261009-130007).txt",
+      "path": "references/source-academicint.txt",
+      "bytes": 163328,
+      "sha256": "83acfe121a526f8bda04f1132c0e45e140d8f86aea3e7cde544cc2849fd23bb4",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (2)(8).txt",
+      "path": "references/source-acoustint.txt",
+      "bytes": 149267,
+      "sha256": "ddcb9cd455ffcfbc8b374500c4649f3b6110322926b2f2240b21ece187154950",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (3)(2).txt",
+      "path": "references/source-adsbint.txt",
+      "bytes": 109946,
+      "sha256": "fc09954d5e82dd52341c869eb9b61eb775be7832b6e93b29c984b3f31ea794a1",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (4).txt",
+      "path": "references/source-aiint.txt",
+      "bytes": 482747,
+      "sha256": "70e0e7ad0615541e38265118cf219013cb2e19ff282bceb51f4eaa6301a8c960",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (5).txt",
+      "path": "references/source-aisint.txt",
+      "bytes": 125281,
+      "sha256": "39632f2f0eb78001b89f28afdfb649d0e9730d96f467c45c21f3ae90dd1306dd",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (6).txt",
+      "path": "references/source-anomalyint.txt",
+      "bytes": 119274,
+      "sha256": "879b1c36435cf55f88327f5bcc1eafb5bd7ce9e416b7c7463dbb1b43a3416aad",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (7).txt",
+      "path": "references/source-assetint.txt",
+      "bytes": 139323,
+      "sha256": "e6b88d471f36894be06babd24fa8b1cfc32ae0c5b0605d53d80f4f3cc97b8d57",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (8).txt",
+      "path": "references/source-audint.txt",
+      "bytes": 163897,
+      "sha256": "0df851c9a07586b114e33be442e05dc6551e0f4437c770c5913940165b094034",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (9).txt",
+      "path": "references/source-automotiveint.txt",
+      "bytes": 144468,
+      "sha256": "a70c89714a1fd080ba9ae4cbda26def49222cb2fbddc52b2a7d1167dd26b895f",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted markdown (10).md",
+      "path": "references/source-aviation_cyber_int.md",
+      "bytes": 24463,
+      "sha256": "655d8d989e25745b586abaaf4e7e643c17e7fb34fb075a70bf7e8dac0bc56953",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (11).txt",
+      "path": "references/source-aviint.txt",
+      "bytes": 71177,
+      "sha256": "f5dca9d76cc53e21af61f80b8907349e1245932cfb767882bff177ea779b9374",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (12).txt",
+      "path": "references/source-behaviouralint.txt",
+      "bytes": 135852,
+      "sha256": "2a4b72f10eefe970af4b053034385cc2175a4ae7bf20afadbe372267f4a163d3",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted markdown (13).md",
+      "path": "references/source-brandint.md",
+      "bytes": 67625,
+      "sha256": "5953a7870bf169074f7a1267d906de751ae05700f3161336452c2bcc01272896",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (14).txt",
+      "path": "references/source-breachint.txt",
+      "bytes": 205089,
+      "sha256": "69b9d844200428aa10aa2700e78b3df1d542ee7df7ad5f4ba14dd59c7fe5b473",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (15).txt",
+      "path": "references/source-cloudint.txt",
+      "bytes": 143557,
+      "sha256": "36fb4205ef73e4a5136f760483c837f65cb50b85187df4bd33319e5cd53f5ea5",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (16).txt",
+      "path": "references/source-codeint.txt",
+      "bytes": 133973,
+      "sha256": "e32055f5bc3bf9c877d091f2626be01ff1a9d57ca35b2fd296840e22524b521e",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (17).txt",
+      "path": "references/source-comint.txt",
+      "bytes": 183101,
+      "sha256": "7affb2109bdaa135141a09d9a47dc6bc3e21070744e863ee3c807f27e03bd1de",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (18).txt",
+      "path": "references/source-containerint.txt",
+      "bytes": 184628,
+      "sha256": "5b78dc311c8844152dfd2acfe83d2cfb145722d0381ec406c0040231aa8f6258",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted markdown (19).md",
+      "path": "references/source-contradictionint.md",
+      "bytes": 34660,
+      "sha256": "fab5049c1b08b9bb8d8508cd7fe77d4a95f083c5b9aa695bf756ea8f10891708",
+      "preservation": "byte_identical"
+    },
+    {
+      "uploaded_name": "Pasted text (20).txt",
+      "path": "references/source-companyint.txt",
+      "bytes": 91631,
+      "sha256": "e6b2c42fa98c319079e9a1c3e6ce5d739ecb3ffd91897b41cbac569ca1fe9307",
+      "preservation": "byte_identical"
+    }
+  ],
+  "source_count": 29,
+  "preservation": "All source files are byte-identical."
+}

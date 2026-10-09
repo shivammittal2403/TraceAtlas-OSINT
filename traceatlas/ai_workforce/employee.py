@@ -61,7 +61,7 @@ class ModelPolicy:
     fallback: str = "deterministic"
 
     def usable_in_local_only_mode(self) -> bool:
-        return self.provider in ("deterministic", "ollama") or not self.allow_cloud is False
+        return self.provider in ("deterministic", "ollama")
 
 
 @dataclass

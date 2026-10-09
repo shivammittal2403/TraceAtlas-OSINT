@@ -1,0 +1,4341 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+import uuid
+from collections import defaultdict
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from enum import Enum, auto
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+# ==============================================================================
+# TRACEATLAS — CONTAINERINT
+# CONTAINER / OCI IMAGE / REGISTRY / SUPPLY-CHAIN INTELLIGENCE AI EMPLOYEE
+# MODE: DEFENSIVE / AUTHORIZED / STATIC-FIRST / EVIDENCE-FIRST
+# ==============================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+)
+logger = logging.getLogger("TRACEATLAS.CONTAINERINT")
+
+
+# ==============================================================================
+# SECTION 12: HARD RESTRICTIONS / POLICY ENGINE
+# ==============================================================================
+
+class PolicyViolation(Exception):
+    pass
+
+
+PROHIBITED_SCOPE_FLAGS = (
+    "allow_registry_credential_guessing",
+    "allow_registry_brute_force",
+    "allow_stolen_registry_credentials",
+    "allow_leaked_token_use",
+    "allow_registry_authentication_bypass",
+    "allow_repository_authorization_bypass",
+    "allow_unauthorized_private_image_pull",
+    "allow_image_push",
+    "allow_image_delete",
+    "allow_tag_delete",
+    "allow_tag_change",
+    "allow_manifest_overwrite",
+    "allow_registry_metadata_tampering",
+    "allow_publish_malicious_image",
+    "allow_poison_base_image",
+    "allow_poison_dependency",
+    "allow_backdoor_injection",
+    "allow_modify_production_image",
+    "allow_container_exploitation",
+    "allow_container_escape",
+    "allow_kubernetes_exploitation",
+    "allow_privileged_container_deployment",
+    "allow_offensive_host_mount_use",
+    "allow_docker_socket_abuse",
+    "allow_cryptocurrency_miner_deployment",
+    "allow_malware_deployment",
+    "allow_runtime_persistence",
+    "allow_secret_extraction_for_reuse",
+    "allow_authentication_with_discovered_secret",
+    "allow_destructive_runtime_testing",
+    "allow_denial_of_service_testing",
+    "allow_execute_unknown_image",
+    "allow_execute_unknown_binary",
+)
+
+PROHIBITED_OBJECTIVE_KEYWORDS = (
+    "brute force registry",
+    "guess registry credential",
+    "bypass registry authentication",
+    "pull private image without authorization",
+    "push image",
+    "overwrite manifest",
+    "delete tag",
+    "delete image",
+    "tamper registry metadata",
+    "poison base image",
+    "poison package",
+    "inject backdoor",
+    "modify production image",
+    "exploit container",
+    "container escape",
+    "exploit kubernetes",
+    "privileged container deployment",
+    "abuse docker socket",
+    "host mount offensively",
+    "deploy miner",
+    "deploy malware",
+    "runtime persistence",
+    "extract secret for reuse",
+    "use discovered secret",
+    "test discovered token",
+    "destructive runtime testing",
+    "denial of service testing",
+    "execute unknown image",
+    "run unknown binary",
+)
+
+
+def enforce_policy(objective: str, scope: Dict[str, Any]) -> None:
+    """
+    Enforces CONTAINERINT hard restrictions.
+
+    Defensive, authorized, static-first container/image/registry intelligence only.
+    """
+    if not isinstance(scope, dict):
+        raise PolicyViolation("POLICY_BLOCKED: scope must be a dictionary.")
+
+    mode = str(scope.get("mode", "AUTHORIZED_STATIC")).upper()
+    allowed_modes = {
+        "AUTHORIZED_STATIC",
+        "AUTHORIZED_READONLY",
+        "AUTHORIZED_SANDBOX_DYNAMIC_IF_EXPLICITLY_APPROVED",
+    }
+
+    if mode not in allowed_modes:
+        raise PolicyViolation(
+            "POLICY_BLOCKED: CONTAINERINT requires authorized static/read-only mode. "
+            "Dynamic execution requires explicit sandbox authorization."
+        )
+
+    if mode == "AUTHORIZED_SANDBOX_DYNAMIC_IF_EXPLICITLY_APPROVED":
+        if not scope.get("authorized_isolated_sandbox", False):
+            raise PolicyViolation(
+                "POLICY_BLOCKED: dynamic container analysis requires explicit isolated sandbox authorization, "
+                "network controls, host isolation, resource limits, logging, and approved artifact."
+            )
+
+    for flag in PROHIBITED_SCOPE_FLAGS:
+        if scope.get(flag, False):
+            raise PolicyViolation(f"POLICY_BLOCKED: prohibited scope flag '{flag}'.")
+
+    objective_lower = (objective or "").lower()
+    for keyword in PROHIBITED_OBJECTIVE_KEYWORDS:
+        if keyword in objective_lower:
+            raise PolicyViolation(
+                f"POLICY_BLOCKED: objective contains prohibited concept '{keyword}'."
+            )
+
+
+# ==============================================================================
+# ENUMS / STATES
+# ==============================================================================
+
+class RegistryType(Enum):
+    PUBLIC_REGISTRY = auto()
+    PRIVATE_REGISTRY = auto()
+    ENTERPRISE_REGISTRY = auto()
+    CLOUD_REGISTRY = auto()
+    LOCAL_REGISTRY = auto()
+    MIRROR = auto()
+    PROXY_CACHE = auto()
+    UNKNOWN = auto()
+
+
+class DigestScope(Enum):
+    MANIFEST = auto()
+    INDEX = auto()
+    CONFIG = auto()
+    LAYER = auto()
+    FILESYSTEM = auto()
+    FILE = auto()
+    UNKNOWN = auto()
+
+
+class TagState(Enum):
+    CURRENT = auto()
+    HISTORICAL = auto()
+    MUTABLE = auto()
+    IMMUTABLE_VERIFIED = auto()
+    UNKNOWN = auto()
+
+
+class LineageState(Enum):
+    VERIFIED_BASE_IMAGE = auto()
+    SUPPORTED_BASE_IMAGE = auto()
+    PROBABLE_BASE_IMAGE = auto()
+    UNKNOWN = auto()
+
+
+class ImageRelationState(Enum):
+    EXACT_SAME_DIGEST = auto()
+    SAME_CONFIG_DIFFERENT_MANIFEST = auto()
+    NEAR_DUPLICATE = auto()
+    DERIVED_IMAGE = auto()
+    REBUILT_IMAGE = auto()
+    DISTINCT = auto()
+    UNKNOWN = auto()
+
+
+class SbomValidationState(Enum):
+    MATCHES_IMAGE_STRONGLY = auto()
+    PARTIAL_MATCH = auto()
+    STALE_CANDIDATE = auto()
+    DIFFERENT_BUILD_CANDIDATE = auto()
+    UNVERIFIED = auto()
+    INCONCLUSIVE = auto()
+
+
+class SignatureState(Enum):
+    VERIFIED = auto()
+    INVALID = auto()
+    UNVERIFIED = auto()
+    ABSENT = auto()
+    UNKNOWN = auto()
+
+
+class ProvenanceState(Enum):
+    VERIFIED_BUILD_SOURCE = auto()
+    SUPPORTED_BUILD_SOURCE = auto()
+    SOURCE_CLAIMED = auto()
+    UNKNOWN = auto()
+
+
+class VulnerabilityState(Enum):
+    CANDIDATE = auto()
+    APPLICABILITY_UNRESOLVED = auto()
+    NOT_AFFECTED_PER_VEX = auto()
+    FIXED_PER_VEX = auto()
+    UNDER_INVESTIGATION = auto()
+    DISPUTED = auto()
+
+
+class DeploymentDriftType(Enum):
+    TAG_DRIFT = auto()
+    DEPLOYMENT_DRIFT = auto()
+    RUNTIME_FILESYSTEM_DRIFT = auto()
+    MUTABLE_REFERENCE_RISK = auto()
+    NO_DRIFT_EVIDENCE = auto()
+    UNKNOWN = auto()
+
+
+class SecretState(Enum):
+    PRESENT = auto()
+    HISTORICAL_LAYER_PRESENT = auto()
+    REDACTED = auto()
+    VALIDITY_NOT_TESTED = auto()
+
+
+class MalwareState(Enum):
+    CLEAN_INDICATOR_ABSENT = auto()
+    MALICIOUS_ARTIFACT_CANDIDATE = auto()
+    SUSPICIOUS_ARTIFACT_CANDIDATE = auto()
+    UNKNOWN = auto()
+
+
+class SourceIndependenceState(Enum):
+    INDEPENDENT = auto()
+    PARTIALLY_DEPENDENT = auto()
+    DEPENDENT = auto()
+    UNKNOWN = auto()
+
+
+class VerificationState(Enum):
+    SUPPORTED = auto()
+    PARTIALLY_SUPPORTED = auto()
+    DISPUTED = auto()
+    UNSUPPORTED = auto()
+    INCONCLUSIVE = auto()
+
+
+class HypothesisStatus(Enum):
+    ACTIVE = auto()
+    REJECTED = auto()
+    CONFIRMED = auto()
+    CANDIDATE = auto()
+    INCONCLUSIVE = auto()
+
+
+class PolicyComplianceState(Enum):
+    COMPLIANT = auto()
+    PARTIALLY_COMPLIANT = auto()
+    NON_COMPLIANT = auto()
+    NOT_ASSESSED = auto()
+
+
+class HardeningState(Enum):
+    BASELINE = auto()
+    ELEVATED_RISK_CONFIGURATION = auto()
+    HIGH_RISK_RUNTIME_CONFIGURATION = auto()
+    UNKNOWN = auto()
+
+
+# ==============================================================================
+# DATA OBJECTS
+# ==============================================================================
+
+@dataclass
+class EvidenceRef:
+    evidence_id: str
+    case_id: str
+    source_id: str
+    upstream_source_id: str
+    source_type: str
+    kind: str
+    observed_at: Optional[datetime]
+    reliability: float
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class RegistryObject:
+    registry_id: str
+    hostname: Optional[str] = None
+    provider: Optional[str] = None
+    registry_type: RegistryType = RegistryType.UNKNOWN
+    authorization_context: Optional[str] = None
+    repositories: List[str] = field(default_factory=list)
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    source: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class RepositoryObject:
+    registry_id: str
+    repository_name: str
+    namespace: Optional[str] = None
+    owner_candidate: Optional[str] = None
+    visibility: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+    digests: List[str] = field(default_factory=list)
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    source: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ImageReferenceObject:
+    image_reference_id: str
+    registry_id: Optional[str] = None
+    repository: Optional[str] = None
+    tag: Optional[str] = None
+    digest: Optional[str] = None
+    original_reference: Optional[str] = None
+    resolved_reference: Optional[str] = None
+    observed_at: Optional[datetime] = None
+    source: Optional[str] = None
+    confidence: float = 0.5
+    evidence_ids: List[str] = field(default_factory=list)
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class TagHistoryEntry:
+    entry_id: str
+    tag: str
+    digest: str
+    valid_from: Optional[datetime] = None
+    valid_to: Optional[datetime] = None
+    observed_at: Optional[datetime] = None
+    source: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+
+
+@dataclass
+class PlatformVariant:
+    os: Optional[str] = None
+    architecture: Optional[str] = None
+    variant: Optional[str] = None
+    features: List[str] = field(default_factory=list)
+    manifest_digest: Optional[str] = None
+    config_digest: Optional[str] = None
+    layer_digests: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ManifestObject:
+    manifest_digest: Optional[str] = None
+    media_type: Optional[str] = None
+    config_digest: Optional[str] = None
+    layer_digests: List[str] = field(default_factory=list)
+    platform_context: Optional[PlatformVariant] = None
+    annotations: Dict[str, Any] = field(default_factory=dict)
+    size: Optional[int] = None
+    source: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ImageConfigObject:
+    created_claim: Optional[datetime] = None
+    architecture: Optional[str] = None
+    os: Optional[str] = None
+    environment: Dict[str, str] = field(default_factory=dict)
+    entrypoint: List[str] = field(default_factory=list)
+    cmd: List[str] = field(default_factory=list)
+    user: Optional[str] = None
+    working_directory: Optional[str] = None
+    labels: Dict[str, str] = field(default_factory=dict)
+    history: List[str] = field(default_factory=list)
+    volumes: List[str] = field(default_factory=list)
+    exposed_ports: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class LayerObject:
+    layer_index: int
+    digest: Optional[str] = None
+    media_type: Optional[str] = None
+    compressed_size: Optional[int] = None
+    uncompressed_size: Optional[int] = None
+    parent_layer: Optional[str] = None
+    files_added: List[str] = field(default_factory=list)
+    files_modified: List[str] = field(default_factory=list)
+    files_deleted: List[str] = field(default_factory=list)
+    whiteouts: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FilesystemArtifact:
+    artifact_id: str
+    path: Optional[str] = None
+    filename: Optional[str] = None
+    size: Optional[int] = None
+    sha256: Optional[str] = None
+    layer_index: Optional[int] = None
+    current_present: bool = True
+    historical_present: bool = True
+    deleted_in_layer: Optional[int] = None
+    file_type: Optional[str] = None
+    mime_type: Optional[str] = None
+    permissions: Optional[str] = None
+    owner: Optional[str] = None
+    content_snippet: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class PackageObject:
+    package_id: str
+    name: str
+    version: Optional[str] = None
+    ecosystem: Optional[str] = None
+    purl: Optional[str] = None
+    cpe: Optional[str] = None
+    architecture: Optional[str] = None
+    location: Optional[str] = None
+    layer_index: Optional[int] = None
+    direct_or_inherited: Optional[str] = None
+    source: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class BinaryObject:
+    binary_id: str
+    path: Optional[str] = None
+    sha256: Optional[str] = None
+    file_type: Optional[str] = None
+    architecture: Optional[str] = None
+    signing: Optional[Dict[str, Any]] = None
+    package_association: Optional[str] = None
+    layer_index: Optional[int] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SbomComponent:
+    name: str
+    version: Optional[str] = None
+    ecosystem: Optional[str] = None
+    purl: Optional[str] = None
+    cpe: Optional[str] = None
+    licenses: List[str] = field(default_factory=list)
+    hashes: Dict[str, str] = field(default_factory=dict)
+    supplier: Optional[str] = None
+
+
+@dataclass
+class SbomObject:
+    sbom_id: str
+    format: Optional[str] = None
+    version: Optional[str] = None
+    components: List[SbomComponent] = field(default_factory=list)
+    dependency_edges: List[Dict[str, Any]] = field(default_factory=list)
+    generated_at: Optional[datetime] = None
+    source: Optional[str] = None
+    hash: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SbomValidation:
+    validation_id: str
+    sbom_id: str
+    state: SbomValidationState
+    matched_components: List[str] = field(default_factory=list)
+    missing_in_sbom: List[str] = field(default_factory=list)
+    extra_in_sbom: List[str] = field(default_factory=list)
+    version_conflicts: List[Dict[str, Any]] = field(default_factory=list)
+    explanation: str = ""
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class VexRecord:
+    vex_id: str
+    vulnerability_id: Optional[str] = None
+    product: Optional[str] = None
+    purl: Optional[str] = None
+    version: Optional[str] = None
+    status: Optional[str] = None
+    justification: Optional[str] = None
+    issuer: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SignatureObject:
+    signature_id: str
+    digest_covered: Optional[str] = None
+    signer_identity_claim: Optional[str] = None
+    certificate_subject: Optional[str] = None
+    transparency_log: Optional[str] = None
+    verification_result: Optional[str] = None
+    verification_time: Optional[datetime] = None
+    policy: Optional[str] = None
+    state: SignatureState = SignatureState.UNKNOWN
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class AttestationObject:
+    attestation_id: str
+    attestation_type: Optional[str] = None
+    predicate: Dict[str, Any] = field(default_factory=dict)
+    signer: Optional[str] = None
+    subject_digest: Optional[str] = None
+    verified: Optional[bool] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ProvenanceObject:
+    provenance_id: str
+    builder: Optional[str] = None
+    source_repository: Optional[str] = None
+    commit: Optional[str] = None
+    build_workflow: Optional[str] = None
+    materials: List[Dict[str, Any]] = field(default_factory=list)
+    timestamp: Optional[datetime] = None
+    artifact_digest: Optional[str] = None
+    state: ProvenanceState = ProvenanceState.UNKNOWN
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class BuildSourceObject:
+    build_id: str
+    repository: Optional[str] = None
+    commit: Optional[str] = None
+    pipeline: Optional[str] = None
+    build_time: Optional[datetime] = None
+    image_digest: Optional[str] = None
+    state: ProvenanceState = ProvenanceState.UNKNOWN
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SecretExposure:
+    secret_id: str
+    secret_type: str
+    redacted_value: str
+    fingerprint: str
+    path: Optional[str] = None
+    layer_index: Optional[int] = None
+    environment_variable: Optional[str] = None
+    state: SecretState = SecretState.REDACTED
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MalwareIndicator:
+    indicator_id: str
+    indicator_type: str
+    value: str
+    source: Optional[str] = None
+    match_object_type: Optional[str] = None
+    match_object_id: Optional[str] = None
+    state: MalwareState = MalwareState.UNKNOWN
+    family: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class VulnerabilityCandidate:
+    vulnerability_id: str
+    package_name: str
+    cve: Optional[str] = None
+    package_version: Optional[str] = None
+    purl: Optional[str] = None
+    cpe: Optional[str] = None
+    severity: Optional[str] = None
+    epss: Optional[float] = None
+    kev: bool = False
+    fixed_version: Optional[str] = None
+    affected_range: Optional[str] = None
+    source: Optional[str] = None
+    state: VulnerabilityState = VulnerabilityState.CANDIDATE
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ContainerInstance:
+    container_id: str
+    image_digest: Optional[str] = None
+    runtime: Optional[str] = None
+    host_or_node_reference: Optional[str] = None
+    started_at: Optional[datetime] = None
+    status: Optional[str] = None
+    workload_reference: Optional[str] = None
+    restart_count: Optional[int] = None
+    security_context: Dict[str, Any] = field(default_factory=dict)
+    runtime_filesystem_drift: bool = False
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class KubernetesWorkload:
+    workload_id: str
+    kind: Optional[str] = None
+    namespace: Optional[str] = None
+    cluster: Optional[str] = None
+    pod_name: Optional[str] = None
+    container_name: Optional[str] = None
+    image_reference: Optional[str] = None
+    image_digest: Optional[str] = None
+    init_containers: List[Dict[str, Any]] = field(default_factory=list)
+    sidecars: List[Dict[str, Any]] = field(default_factory=list)
+    security_context: Dict[str, Any] = field(default_factory=dict)
+    image_pull_policy: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CloudContext:
+    context_id: str
+    service: Optional[str] = None
+    account_ref: Optional[str] = None
+    region: Optional[str] = None
+    registry_ref: Optional[str] = None
+    workload_ref: Optional[str] = None
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class DeploymentDigest:
+    deployment_id: str
+    workload_id: Optional[str] = None
+    approved_digest: Optional[str] = None
+    observed_digest: Optional[str] = None
+    tag: Optional[str] = None
+    observed_at: Optional[datetime] = None
+    state: DeploymentDriftType = DeploymentDriftType.UNKNOWN
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class DriftFinding:
+    drift_id: str
+    drift_type: DeploymentDriftType
+    object_id: Optional[str] = None
+    expected: Optional[str] = None
+    observed: Optional[str] = None
+    time_range: Optional[Dict[str, Any]] = None
+    state: VerificationState = VerificationState.INCONCLUSIVE
+    evidence_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Contradiction:
+    contradiction_id: str
+    contradiction_type: str
+    description: str
+    object_ids: List[str] = field(default_factory=list)
+    evidence_ids: List[str] = field(default_factory=list)
+    severity: str = "MEDIUM"
+
+
+@dataclass
+class Hypothesis:
+    id: str
+    description: str
+    support_evidence: List[str] = field(default_factory=list)
+    opposition_evidence: List[str] = field(default_factory=list)
+    unknowns: List[str] = field(default_factory=list)
+    falsification_criteria: str = ""
+    status: HypothesisStatus = HypothesisStatus.INCONCLUSIVE
+
+
+@dataclass
+class FactRecord:
+    fact_id: str
+    statement: str
+    claim_type: str
+    verification_state: VerificationState
+    evidence_ids: List[str] = field(default_factory=list)
+    object_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.5
+    limitations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class GraphNode:
+    node_id: str
+    type: str
+    attributes: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class GraphEdge:
+    edge_id: str
+    source_node_id: str
+    target_node_id: str
+    relation: str
+    confidence: float = 0.5
+    evidence_ids: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Gap:
+    gap_id: str
+    description: str
+    importance: str
+    recommended_source: str
+    specialist: str
+    expected_information_value: str
+
+
+# ==============================================================================
+# CONSTANTS
+# ==============================================================================
+
+SOURCE_RELIABILITY = {
+    "oci_registry_api": 0.92,
+    "oci_manifest": 0.94,
+    "cryptographic_digest": 0.96,
+    "image_tarball": 0.88,
+    "filesystem_export": 0.86,
+    "sbom_cyclonedx": 0.82,
+    "sbom_spdx": 0.82,
+    "vex_record": 0.78,
+    "cosign_signature": 0.88,
+    "sigstore_transparency_log": 0.86,
+    "in_toto_attestation": 0.84,
+    "slsa_provenance": 0.86,
+    "build_metadata": 0.80,
+    "dockerfile": 0.72,
+    "containerfile": 0.72,
+    "ci_cd_build_record": 0.82,
+    "repository_metadata": 0.74,
+    "kubernetes_inventory": 0.84,
+    "runtime_inventory": 0.86,
+    "cloud_inventory": 0.82,
+    "vulnerability_database": 0.76,
+    "vendor_advisory": 0.80,
+    "kev_catalog": 0.84,
+    "epss_feed": 0.70,
+    "malware_intelligence": 0.72,
+    "approved_scanner_result": 0.78,
+    "user_report": 0.45,
+    "third_party_aggregator": 0.30,
+    "unknown": 0.20,
+}
+
+SECRET_REGEXES = [
+    ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("private_key_marker", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("jwt_like_token", re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")),
+    ("bearer_token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]+")),
+    (
+        "generic_secret_assignment",
+        re.compile(
+            r"(?i)\b(password|passwd|pwd|token|secret|api[_-]?key|apikey|"
+            r"private[_-]?key|cookie|session[_-]?id|mfa|otp|credential)\b\s*[:=]\s*([^\s,;&]+)"
+        ),
+    ),
+]
+
+SENSITIVE_ENV_KEYS = (
+    "password",
+    "passwd",
+    "pwd",
+    "token",
+    "api_key",
+    "apikey",
+    "secret",
+    "private_key",
+    "privatekey",
+    "cookie",
+    "session",
+    "mfa",
+    "otp",
+    "credential",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "azure_client_secret",
+    "gcp_service_account",
+)
+
+SUSPICIOUS_TEMP_PATHS = (
+    "/tmp/",
+    "/var/tmp/",
+    "appdata\\local\\temp\\",
+    "c:\\users\\",
+)
+
+
+# ==============================================================================
+# HELPERS
+# ==============================================================================
+
+def new_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def stable_id(prefix: str, *parts: Any) -> str:
+    raw = "|".join(str(p) for p in parts)
+    digest = hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
+    return f"{prefix}_{digest[:12]}"
+
+
+def json_serial(obj: Any) -> Any:
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, Enum):
+        return obj.name
+    if hasattr(obj, "__dataclass_fields__"):
+        return asdict(obj)
+    if isinstance(obj, set):
+        return sorted(obj)
+    return str(obj)
+
+
+def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(high, value))
+
+
+def enum_from_name(enum_cls: Any, name: Any, default: Any) -> Any:
+    try:
+        return enum_cls[str(name).upper()]
+    except Exception:
+        return default
+
+
+def parse_dt(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    text = text.replace("Z", "+00:00")
+
+    try:
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        pass
+
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+    ):
+        try:
+            dt = datetime.strptime(text, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except ValueError:
+            continue
+
+    return None
+
+
+def normalize_digest(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    s = str(value).strip().lower()
+    if not s:
+        return None
+    if not s.startswith("sha256:"):
+        s = f"sha256:{s}"
+    return s
+
+
+def version_tuple(value: str) -> Tuple[int, ...]:
+    parts = re.split(r"[.\-+]", str(value or ""))
+    out: List[int] = []
+    for p in parts:
+        if p.isdigit():
+            out.append(int(p))
+        else:
+            out.append(0)
+    return tuple(out)
+
+
+def version_lte(a: Optional[str], b: Optional[str]) -> bool:
+    if not a or not b:
+        return False
+    try:
+        return version_tuple(a) <= version_tuple(b)
+    except Exception:
+        return False
+
+
+def make_evidence(
+    item: Dict[str, Any],
+    case_id: str,
+    kind: str,
+    now: datetime,
+    default_source_type: str = "unknown",
+) -> EvidenceRef:
+    source_type = str(item.get("source_type") or default_source_type)
+    reliability = float(item.get("reliability", SOURCE_RELIABILITY.get(source_type, 0.20)))
+
+    observed_at = parse_dt(
+        item.get("observed_at")
+        or item.get("first_seen")
+        or item.get("last_seen")
+        or item.get("timestamp")
+        or item.get("generated_at")
+        or item.get("verification_time")
+        or item.get("build_time")
+        or item.get("started_at")
+        or item.get("valid_from")
+    )
+
+    limitations: List[str] = list(item.get("limitations", []) or [])
+
+    if observed_at is None:
+        limitations.append("OBSERVATION_TIME_UNRESOLVED")
+
+    if source_type in {"user_report", "third_party_aggregator", "unknown"}:
+        limitations.append("LOWER_SOURCE_AUTHORITY")
+
+    ev = EvidenceRef(
+        evidence_id=new_id("EVID"),
+        case_id=case_id,
+        source_id=str(item.get("source_id") or "UNKNOWN_SOURCE"),
+        upstream_source_id=str(item.get("upstream_source_id") or item.get("source_id") or "UNKNOWN_UPSTREAM"),
+        source_type=source_type,
+        kind=kind,
+        observed_at=observed_at,
+        reliability=clamp(reliability),
+        limitations=sorted(set(limitations)),
+    )
+
+    item.setdefault("evidence_ids", [])
+    item["evidence_ids"].append(ev.evidence_id)
+
+    item.setdefault("confidence", ev.reliability)
+    item.setdefault("limitations", [])
+    item["limitations"] = sorted(set(list(item["limitations"]) + ev.limitations))
+
+    return ev
+
+
+def detect_secrets_in_text(text: Optional[str]) -> List[Dict[str, str]]:
+    if not text:
+        return []
+
+    found: List[Dict[str, str]] = []
+    s = str(text)
+
+    for secret_type, rx in SECRET_REGEXES:
+        for m in rx.finditer(s):
+            if secret_type == "generic_secret_assignment":
+                raw_secret = m.group(2) or m.group(0)
+            else:
+                raw_secret = m.group(0)
+
+            fingerprint = hashlib.sha256(raw_secret.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+            found.append(
+                {
+                    "secret_type": secret_type,
+                    "redacted_value": "[REDACTED]",
+                    "fingerprint": fingerprint,
+                }
+            )
+
+    # Deduplicate by fingerprint/type.
+    unique: Dict[Tuple[str, str], Dict[str, str]] = {}
+    for f in found:
+        unique[(f["secret_type"], f["fingerprint"])] = f
+
+    return list(unique.values())
+
+
+def is_sensitive_env_key(key: str) -> bool:
+    k = str(key).lower()
+    return any(token in k for token in SENSITIVE_ENV_KEYS)
+
+
+def component_key(name: Optional[str], version: Optional[str], ecosystem: Optional[str], purl: Optional[str]) -> str:
+    return f"{str(name or '').lower()}|{str(version or '').lower()}|{str(ecosystem or '').lower()}|{str(purl or '').lower()}"
+
+
+def component_display(name: Optional[str], version: Optional[str], ecosystem: Optional[str]) -> str:
+    return f"{name or 'unknown'}@{version or 'unknown'} ({ecosystem or 'unknown'})"
+
+
+# ==============================================================================
+# PARSERS
+# ==============================================================================
+
+def parse_registries(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[RegistryObject]:
+    out: List[RegistryObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "registry_record", now, "oci_registry_api")
+        evidences.append(ev)
+
+        registry_id = str(item.get("registry_id") or stable_id("REG", item.get("hostname"), item.get("provider")))
+
+        out.append(
+            RegistryObject(
+                registry_id=registry_id,
+                hostname=item.get("hostname"),
+                provider=item.get("provider"),
+                registry_type=enum_from_name(RegistryType, item.get("registry_type"), RegistryType.UNKNOWN),
+                authorization_context=item.get("authorization_context"),
+                repositories=[str(x) for x in item.get("repositories", []) or []],
+                first_seen=parse_dt(item.get("first_seen")),
+                last_seen=parse_dt(item.get("last_seen")),
+                source=item.get("source") or ev.source_id,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_repositories(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[RepositoryObject]:
+    out: List[RepositoryObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "repository_record", now, "oci_registry_api")
+        evidences.append(ev)
+
+        out.append(
+            RepositoryObject(
+                registry_id=str(item.get("registry_id") or "UNKNOWN_REGISTRY"),
+                repository_name=str(item.get("repository_name") or item.get("name") or "UNKNOWN_REPO"),
+                namespace=item.get("namespace"),
+                owner_candidate=item.get("owner_candidate"),
+                visibility=item.get("visibility"),
+                tags=[str(x) for x in item.get("tags", []) or []],
+                digests=[normalize_digest(x) or str(x) for x in item.get("digests", []) or []],
+                first_seen=parse_dt(item.get("first_seen")),
+                last_seen=parse_dt(item.get("last_seen")),
+                source=item.get("source") or ev.source_id,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_image_references(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[ImageReferenceObject]:
+    out: List[ImageReferenceObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "image_reference", now, "oci_registry_api")
+        evidences.append(ev)
+
+        original = item.get("original_reference") or item.get("reference")
+        digest = normalize_digest(item.get("digest"))
+        tag = item.get("tag")
+
+        limitations: List[str] = list(item.get("limitations", []) or [])
+
+        if digest is None:
+            limitations.append("MUTABLE_TAG_REFERENCE_NO_IMMUTABLE_DIGEST")
+
+        out.append(
+            ImageReferenceObject(
+                image_reference_id=str(item.get("image_reference_id") or stable_id("IMGREF", original, digest, tag)),
+                registry_id=item.get("registry_id"),
+                repository=item.get("repository"),
+                tag=tag,
+                digest=digest,
+                original_reference=original,
+                resolved_reference=item.get("resolved_reference"),
+                observed_at=parse_dt(item.get("observed_at")) or ev.observed_at,
+                source=item.get("source") or ev.source_id,
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                evidence_ids=[ev.evidence_id],
+                limitations=sorted(set(limitations)),
+            )
+        )
+
+    return out
+
+
+def parse_tag_history(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[TagHistoryEntry]:
+    out: List[TagHistoryEntry] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "tag_history", now, "oci_registry_api")
+        evidences.append(ev)
+
+        digest = normalize_digest(item.get("digest"))
+        if not digest:
+            continue
+
+        out.append(
+            TagHistoryEntry(
+                entry_id=str(item.get("entry_id") or new_id("TAGHIST")),
+                tag=str(item.get("tag") or "unknown"),
+                digest=digest,
+                valid_from=parse_dt(item.get("valid_from")),
+                valid_to=parse_dt(item.get("valid_to")),
+                observed_at=parse_dt(item.get("observed_at")) or ev.observed_at,
+                source=item.get("source") or ev.source_id,
+                evidence_ids=[ev.evidence_id],
+            )
+        )
+
+    return out
+
+
+def parse_platform_variants(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[PlatformVariant]:
+    out: List[PlatformVariant] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "platform_variant", now, "oci_index")
+        evidences.append(ev)
+
+        out.append(
+            PlatformVariant(
+                os=item.get("os"),
+                architecture=item.get("architecture"),
+                variant=item.get("variant"),
+                features=[str(x) for x in item.get("features", []) or []],
+                manifest_digest=normalize_digest(item.get("manifest_digest")),
+                config_digest=normalize_digest(item.get("config_digest")),
+                layer_digests=[normalize_digest(x) or str(x) for x in item.get("layer_digests", []) or []],
+                evidence_ids=[ev.evidence_id],
+            )
+        )
+
+    return out
+
+
+def parse_manifests(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+    platforms: List[PlatformVariant],
+) -> List[ManifestObject]:
+    out: List[ManifestObject] = []
+
+    platform_by_digest = {p.manifest_digest: p for p in platforms if p.manifest_digest}
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "manifest", now, "oci_manifest")
+        evidences.append(ev)
+
+        manifest_digest = normalize_digest(item.get("manifest_digest"))
+        platform_context = platform_by_digest.get(manifest_digest)
+
+        limitations: List[str] = list(item.get("limitations", []) or [])
+
+        if not manifest_digest:
+            limitations.append("MANIFEST_DIGEST_MISSING")
+
+        out.append(
+            ManifestObject(
+                manifest_digest=manifest_digest,
+                media_type=item.get("media_type"),
+                config_digest=normalize_digest(item.get("config_digest")),
+                layer_digests=[normalize_digest(x) or str(x) for x in item.get("layer_digests", []) or []],
+                platform_context=platform_context,
+                annotations=dict(item.get("annotations", {}) or {}),
+                size=int(item["size"]) if item.get("size") is not None else None,
+                source=item.get("source") or ev.source_id,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(limitations)),
+            )
+        )
+
+    return out
+
+
+def parse_image_configs(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[ImageConfigObject]:
+    out: List[ImageConfigObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "image_config", now, "oci_manifest")
+        evidences.append(ev)
+
+        limitations: List[str] = list(item.get("limitations", []) or [])
+        limitations.append("IMAGE_CONFIG_METADATA_MAY_BE_BUILD_DERIVED_OR_MANUALLY_MODIFIED")
+
+        out.append(
+            ImageConfigObject(
+                created_claim=parse_dt(item.get("created")),
+                architecture=item.get("architecture"),
+                os=item.get("os"),
+                environment=dict(item.get("environment", {}) or {}),
+                entrypoint=[str(x) for x in item.get("entrypoint", []) or []],
+                cmd=[str(x) for x in item.get("cmd", []) or []],
+                user=item.get("user"),
+                working_directory=item.get("working_directory"),
+                labels=dict(item.get("labels", {}) or {}),
+                history=[str(x) for x in item.get("history", []) or []],
+                volumes=[str(x) for x in item.get("volumes", []) or []],
+                exposed_ports=[str(x) for x in item.get("exposed_ports", []) or []],
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(limitations)),
+            )
+        )
+
+    return out
+
+
+def parse_layers(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[LayerObject]:
+    out: List[LayerObject] = []
+
+    for idx, item in enumerate(items or []):
+        ev = make_evidence(item, case_id, "layer", now, "oci_manifest")
+        evidences.append(ev)
+
+        out.append(
+            LayerObject(
+                layer_index=int(item.get("layer_index", idx)),
+                digest=normalize_digest(item.get("digest")),
+                media_type=item.get("media_type"),
+                compressed_size=int(item["compressed_size"]) if item.get("compressed_size") is not None else None,
+                uncompressed_size=int(item["uncompressed_size"]) if item.get("uncompressed_size") is not None else None,
+                parent_layer=normalize_digest(item.get("parent_layer")),
+                files_added=[str(x) for x in item.get("files_added", []) or []],
+                files_modified=[str(x) for x in item.get("files_modified", []) or []],
+                files_deleted=[str(x) for x in item.get("files_deleted", []) or []],
+                whiteouts=[str(x) for x in item.get("whiteouts", []) or []],
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_filesystem_artifacts(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[FilesystemArtifact]:
+    out: List[FilesystemArtifact] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "filesystem_artifact", now, "filesystem_export")
+        evidences.append(ev)
+
+        path = item.get("path")
+        filename = item.get("filename") or (str(path).split("/")[-1] if path else None)
+
+        limitations: List[str] = list(item.get("limitations", []) or [])
+
+        if not item.get("sha256"):
+            limitations.append("FILE_HASH_MISSING")
+
+        out.append(
+            FilesystemArtifact(
+                artifact_id=str(item.get("artifact_id") or stable_id("FS", path, item.get("sha256"), item.get("layer_index"))),
+                path=path,
+                filename=filename,
+                size=int(item["size"]) if item.get("size") is not None else None,
+                sha256=item.get("sha256"),
+                layer_index=int(item["layer_index"]) if item.get("layer_index") is not None else None,
+                current_present=bool(item.get("current_present", True)),
+                historical_present=bool(item.get("historical_present", True)),
+                deleted_in_layer=int(item["deleted_in_layer"]) if item.get("deleted_in_layer") is not None else None,
+                file_type=item.get("file_type"),
+                mime_type=item.get("mime_type"),
+                permissions=item.get("permissions"),
+                owner=item.get("owner"),
+                content_snippet=item.get("content_snippet"),
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(limitations)),
+            )
+        )
+
+    return out
+
+
+def parse_packages(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[PackageObject]:
+    out: List[PackageObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "package_inventory", now, "filesystem_export")
+        evidences.append(ev)
+
+        name = str(item.get("name") or "unknown")
+        version = item.get("version")
+        ecosystem = item.get("ecosystem")
+        purl = item.get("purl")
+
+        out.append(
+            PackageObject(
+                package_id=str(item.get("package_id") or stable_id("PKG", name, version, ecosystem, purl)),
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                purl=purl,
+                cpe=item.get("cpe"),
+                architecture=item.get("architecture"),
+                location=item.get("location"),
+                layer_index=int(item["layer_index"]) if item.get("layer_index") is not None else None,
+                direct_or_inherited=item.get("direct_or_inherited", "UNKNOWN"),
+                source=item.get("source") or ev.source_id,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_binaries(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[BinaryObject]:
+    out: List[BinaryObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "binary_inventory", now, "filesystem_export")
+        evidences.append(ev)
+
+        out.append(
+            BinaryObject(
+                binary_id=str(item.get("binary_id") or stable_id("BIN", item.get("path"), item.get("sha256"))),
+                path=item.get("path"),
+                sha256=item.get("sha256"),
+                file_type=item.get("file_type"),
+                architecture=item.get("architecture"),
+                signing=dict(item.get("signing", {}) or {}),
+                package_association=item.get("package_association"),
+                layer_index=int(item["layer_index"]) if item.get("layer_index") is not None else None,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_sboms(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[SbomObject]:
+    out: List[SbomObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "sbom", now, "sbom_cyclonedx")
+        evidences.append(ev)
+
+        components: List[SbomComponent] = []
+
+        for comp in item.get("components", []) or []:
+            components.append(
+                SbomComponent(
+                    name=str(comp.get("name") or "unknown"),
+                    version=comp.get("version"),
+                    ecosystem=comp.get("ecosystem"),
+                    purl=comp.get("purl"),
+                    cpe=comp.get("cpe"),
+                    licenses=[str(x) for x in comp.get("licenses", []) or []],
+                    hashes=dict(comp.get("hashes", {}) or {}),
+                    supplier=comp.get("supplier"),
+                )
+            )
+
+        out.append(
+            SbomObject(
+                sbom_id=str(item.get("sbom_id") or stable_id("SBOM", item.get("format"), item.get("version"), ev.source_id)),
+                format=item.get("format"),
+                version=item.get("version"),
+                components=components,
+                dependency_edges=[dict(x) for x in item.get("dependency_edges", []) or []],
+                generated_at=parse_dt(item.get("generated_at")),
+                source=item.get("source") or ev.source_id,
+                hash=item.get("hash"),
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def validate_sbom_against_image(
+    sbom: Optional[SbomObject],
+    packages: List[PackageObject],
+    binaries: List[BinaryObject],
+    image_reference: Optional[ImageReferenceObject],
+    now: datetime,
+) -> Optional[SbomValidation]:
+    if sbom is None:
+        return None
+
+    observed_keys: Set[str] = set()
+    observed_display: Dict[str, str] = {}
+
+    for p in packages:
+        k = component_key(p.name, p.version, p.ecosystem, p.purl)
+        observed_keys.add(k)
+        observed_display[k] = component_display(p.name, p.version, p.ecosystem)
+
+    # Binaries are not necessarily SBOM components unless represented as packages.
+    # We include standalone binary hashes only as weak observed context.
+    for b in binaries:
+        if b.package_association:
+            k = component_key(b.package_association, None, "binary", None)
+            observed_keys.add(k)
+            observed_display[k] = f"binary:{b.path or b.binary_id}"
+
+    sbom_keys: Set[str] = set()
+    sbom_display: Dict[str, str] = {}
+    sbom_by_name_eco: Dict[Tuple[str, str], List[SbomComponent]] = defaultdict(list)
+
+    for c in sbom.components:
+        k = component_key(c.name, c.version, c.ecosystem, c.purl)
+        sbom_keys.add(k)
+        sbom_display[k] = component_display(c.name, c.version, c.ecosystem)
+        sbom_by_name_eco[(str(c.name).lower(), str(c.ecosystem or "").lower())].append(c)
+
+    matched = sorted(observed_keys & sbom_keys)
+    missing_in_sbom = sorted(observed_keys - sbom_keys)
+    extra_in_sbom = sorted(sbom_keys - observed_keys)
+
+    version_conflicts: List[Dict[str, Any]] = []
+
+    for p in packages:
+        key = (str(p.name).lower(), str(p.ecosystem or "").lower())
+        candidates = sbom_by_name_eco.get(key, [])
+        for c in candidates:
+            if c.version and p.version and str(c.version).lower() != str(p.version).lower():
+                version_conflicts.append(
+                    {
+                        "name": p.name,
+                        "ecosystem": p.ecosystem,
+                        "image_version": p.version,
+                        "sbom_version": c.version,
+                    }
+                )
+
+    mismatch_count = len(missing_in_sbom) + len(extra_in_sbom) + len(version_conflicts)
+
+    if not observed_keys:
+        state = SbomValidationState.UNVERIFIED
+        explanation = "No observed package inventory available to validate SBOM."
+    elif mismatch_count == 0:
+        state = SbomValidationState.MATCHES_IMAGE_STRONGLY
+        explanation = "SBOM components align with observed image package inventory."
+    elif sbom.generated_at and image_reference and image_reference.observed_at:
+        if sbom.generated_at < image_reference.observed_at - __import__("datetime").timedelta(days=30):
+            state = SbomValidationState.STALE_CANDIDATE
+            explanation = "SBOM generation time materially predates image observation; possible stale SBOM."
+        elif mismatch_count <= 3:
+            state = SbomValidationState.PARTIAL_MATCH
+            explanation = "SBOM mostly aligns with image inventory but has limited mismatches."
+        else:
+            state = SbomValidationState.DIFFERENT_BUILD_CANDIDATE
+            explanation = "SBOM has material mismatches; may correspond to different build/architecture."
+    elif mismatch_count <= 3:
+        state = SbomValidationState.PARTIAL_MATCH
+        explanation = "SBOM partially matches observed image inventory."
+    else:
+        state = SbomValidationState.INCONCLUSIVE
+        explanation = "SBOM validation inconclusive due to material mismatches and limited temporal context."
+
+    limitations = [
+        "SBOM may be generated from source rather than final image.",
+        "SBOM may be incomplete for statically linked libraries or distroless images.",
+        "SBOM mismatch does not automatically mean malicious tampering.",
+        "Multi-architecture images may have different SBOM applicability.",
+    ]
+
+    return SbomValidation(
+        validation_id=new_id("SBOMVAL"),
+        sbom_id=sbom.sbom_id,
+        state=state,
+        matched_components=[observed_display.get(k, k) for k in matched],
+        missing_in_sbom=[observed_display.get(k, k) for k in missing_in_sbom],
+        extra_in_sbom=[sbom_display.get(k, k) for k in extra_in_sbom],
+        version_conflicts=version_conflicts,
+        explanation=explanation,
+        evidence_ids=sbom.evidence_ids,
+        confidence=clamp(sbom.confidence * (0.95 if state == SbomValidationState.MATCHES_IMAGE_STRONGLY else 0.70)),
+        limitations=limitations,
+    )
+
+
+def parse_vex_records(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[VexRecord]:
+    out: List[VexRecord] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "vex", now, "vex_record")
+        evidences.append(ev)
+
+        out.append(
+            VexRecord(
+                vex_id=str(item.get("vex_id") or stable_id("VEX", item.get("vulnerability_id"), item.get("product"))),
+                vulnerability_id=item.get("vulnerability_id"),
+                product=item.get("product"),
+                purl=item.get("purl"),
+                version=item.get("version"),
+                status=item.get("status"),
+                justification=item.get("justification"),
+                issuer=item.get("issuer"),
+                timestamp=parse_dt(item.get("timestamp")),
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_signatures(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[SignatureObject]:
+    out: List[SignatureObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "signature", now, "cosign_signature")
+        evidences.append(ev)
+
+        result = str(item.get("verification_result") or "UNKNOWN").upper()
+
+        if result == "VERIFIED":
+            state = SignatureState.VERIFIED
+        elif result == "INVALID":
+            state = SignatureState.INVALID
+        elif result == "ABSENT":
+            state = SignatureState.ABSENT
+        elif result == "UNVERIFIED":
+            state = SignatureState.UNVERIFIED
+        else:
+            state = SignatureState.UNKNOWN
+
+        limitations: List[str] = list(item.get("limitations", []) or [])
+        limitations.append("Signature proves artifact integrity/signer relationship, not absence of vulnerabilities or malware.")
+
+        out.append(
+            SignatureObject(
+                signature_id=str(item.get("signature_id") or stable_id("SIG", item.get("digest_covered"), item.get("signer_identity_claim"))),
+                digest_covered=normalize_digest(item.get("digest_covered")),
+                signer_identity_claim=item.get("signer_identity_claim"),
+                certificate_subject=item.get("certificate_subject"),
+                transparency_log=item.get("transparency_log"),
+                verification_result=result,
+                verification_time=parse_dt(item.get("verification_time")),
+                policy=item.get("policy"),
+                state=state,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(limitations)),
+            )
+        )
+
+    return out
+
+
+def parse_attestations(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[AttestationObject]:
+    out: List[AttestationObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "attestation", now, "in_toto_attestation")
+        evidences.append(ev)
+
+        out.append(
+            AttestationObject(
+                attestation_id=str(item.get("attestation_id") or stable_id("ATT", item.get("attestation_type"), item.get("subject_digest"))),
+                attestation_type=item.get("attestation_type"),
+                predicate=dict(item.get("predicate", {}) or {}),
+                signer=item.get("signer"),
+                subject_digest=normalize_digest(item.get("subject_digest")),
+                verified=bool(item.get("verified")) if item.get("verified") is not None else None,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_provenance(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[ProvenanceObject]:
+    out: List[ProvenanceObject] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "provenance", now, "slsa_provenance")
+        evidences.append(ev)
+
+        state = enum_from_name(ProvenanceState, item.get("state"), ProvenanceState.UNKNOWN)
+
+        limitations: List[str] = list(item.get("limitations", []) or [])
+        limitations.append("Provenance may prove build relationship, not source-code benignness.")
+
+        out.append(
+            ProvenanceObject(
+                provenance_id=str(item.get("provenance_id") or stable_id("PROV", item.get("artifact_digest"), item.get("builder"))),
+                builder=item.get("builder"),
+                source_repository=item.get("source_repository"),
+                commit=item.get("commit"),
+                build_workflow=item.get("build_workflow"),
+                materials=[dict(x) for x in item.get("materials", []) or []],
+                timestamp=parse_dt(item.get("timestamp")),
+                artifact_digest=normalize_digest(item.get("artifact_digest")),
+                state=state,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(limitations)),
+            )
+        )
+
+    return out
+
+
+def resolve_build_sources(
+    provenance: List[ProvenanceObject],
+    build_metadata: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[BuildSourceObject]:
+    out: List[BuildSourceObject] = []
+
+    prov_by_digest = {p.artifact_digest: p for p in provenance if p.artifact_digest}
+
+    for item in build_metadata or []:
+        ev = make_evidence(item, case_id, "build_source", now, "ci_cd_build_record")
+        evidences.append(ev)
+
+        digest = normalize_digest(item.get("image_digest"))
+        prov = prov_by_digest.get(digest)
+
+        if prov and prov.state in (ProvenanceState.VERIFIED_BUILD_SOURCE, ProvenanceState.SUPPORTED_BUILD_SOURCE):
+            state = prov.state
+        elif item.get("state"):
+            state = enum_from_name(ProvenanceState, item.get("state"), ProvenanceState.SOURCE_CLAIMED)
+        else:
+            state = ProvenanceState.SOURCE_CLAIMED
+
+        out.append(
+            BuildSourceObject(
+                build_id=str(item.get("build_id") or stable_id("BUILD", digest, item.get("pipeline"))),
+                repository=item.get("repository") or (prov.source_repository if prov else None),
+                commit=item.get("commit") or (prov.commit if prov else None),
+                pipeline=item.get("pipeline"),
+                build_time=parse_dt(item.get("build_time")),
+                image_digest=digest,
+                state=state,
+                evidence_ids=[ev.evidence_id] + (prov.evidence_ids if prov else []),
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [] + ["Commit metadata alone does not prove observed image was built from it."])),
+            )
+        )
+
+    return out
+
+
+def scan_secret_exposures(
+    configs: List[ImageConfigObject],
+    filesystem_artifacts: List[FilesystemArtifact],
+    layers: List[LayerObject],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[SecretExposure]:
+    out: List[SecretExposure] = []
+
+    def add_secret(
+        secret_type: str,
+        redacted_value: str,
+        fingerprint: str,
+        path: Optional[str] = None,
+        layer_index: Optional[int] = None,
+        env_var: Optional[str] = None,
+        current_present: bool = True,
+        evidence_ids: Optional[List[str]] = None,
+        confidence: float = 0.75,
+    ) -> None:
+        state = SecretState.PRESENT if current_present else SecretState.HISTORICAL_LAYER_PRESENT
+
+        limitations = [
+            "Raw secret value is redacted.",
+            "Secret validity was not tested.",
+            "Do not use discovered secrets.",
+            "Hand off credential exposure to CREDINT.",
+        ]
+
+        if not current_present:
+            limitations.append("Secret may remain recoverable from historical layer even if deleted in later layer.")
+
+        out.append(
+            SecretExposure(
+                secret_id=new_id("SECRET"),
+                secret_type=secret_type,
+                redacted_value=redacted_value,
+                fingerprint=fingerprint,
+                path=path,
+                layer_index=layer_index,
+                environment_variable=env_var,
+                state=state,
+                evidence_ids=evidence_ids or [],
+                confidence=clamp(confidence),
+                limitations=limitations,
+            )
+        )
+
+    # Environment variables.
+    for cfg in configs:
+        for key, value in cfg.environment.items():
+            detected = detect_secrets_in_text(str(value))
+            sensitive_key = is_sensitive_env_key(key)
+
+            if detected:
+                for d in detected:
+                    add_secret(
+                        secret_type=d["secret_type"],
+                        redacted_value=d["redacted_value"],
+                        fingerprint=d["fingerprint"],
+                        env_var=key,
+                        current_present=True,
+                        evidence_ids=cfg.evidence_ids,
+                        confidence=cfg.confidence,
+                    )
+            elif sensitive_key and value:
+                fingerprint = hashlib.sha256(str(value).encode("utf-8", errors="ignore")).hexdigest()[:16]
+                add_secret(
+                    secret_type="sensitive_environment_variable",
+                    redacted_value="[REDACTED]",
+                    fingerprint=fingerprint,
+                    env_var=key,
+                    current_present=True,
+                    evidence_ids=cfg.evidence_ids,
+                    confidence=cfg.confidence,
+                )
+
+        # Labels may contain secrets.
+        for key, value in cfg.labels.items():
+            detected = detect_secrets_in_text(str(value))
+            for d in detected:
+                add_secret(
+                    secret_type=f"label_{d['secret_type']}",
+                    redacted_value=d["redacted_value"],
+                    fingerprint=d["fingerprint"],
+                    env_var=key,
+                    current_present=True,
+                    evidence_ids=cfg.evidence_ids,
+                    confidence=cfg.confidence,
+                )
+
+        # History commands may contain secrets.
+        for hist in cfg.history:
+            detected = detect_secrets_in_text(hist)
+            for d in detected:
+                add_secret(
+                    secret_type=f"history_{d['secret_type']}",
+                    redacted_value=d["redacted_value"],
+                    fingerprint=d["fingerprint"],
+                    current_present=True,
+                    evidence_ids=cfg.evidence_ids,
+                    confidence=cfg.confidence,
+                )
+
+    # Filesystem artifacts.
+    for fa in filesystem_artifacts:
+        detected = detect_secrets_in_text(fa.content_snippet)
+        for d in detected:
+            add_secret(
+                secret_type=d["secret_type"],
+                redacted_value=d["redacted_value"],
+                fingerprint=d["fingerprint"],
+                path=fa.path,
+                layer_index=fa.layer_index,
+                current_present=fa.current_present,
+                evidence_ids=fa.evidence_ids,
+                confidence=fa.confidence,
+            )
+
+    return out
+
+
+def scan_malware_indicators(
+    malware_intel: List[Dict[str, Any]],
+    packages: List[PackageObject],
+    binaries: List[BinaryObject],
+    filesystem_artifacts: List[FilesystemArtifact],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[MalwareIndicator]:
+    out: List[MalwareIndicator] = []
+
+    # Known hash IOC matching.
+    for item in malware_intel or []:
+        ev = make_evidence(item, case_id, "malware_intel", now, "malware_intelligence")
+        evidences.append(ev)
+
+        ioc_type = str(item.get("ioc_type", "unknown")).lower()
+        value = str(item.get("value", "")).lower()
+        family = item.get("family")
+
+        if ioc_type in {"sha256", "hash"}:
+            for b in binaries:
+                if str(b.sha256 or "").lower() == value:
+                    out.append(
+                        MalwareIndicator(
+                            indicator_id=new_id("MAL"),
+                            indicator_type="binary_hash_match",
+                            value=value,
+                            source=item.get("source") or ev.source_id,
+                            match_object_type="binary",
+                            match_object_id=b.binary_id,
+                            state=MalwareState.MALICIOUS_ARTIFACT_CANDIDATE,
+                            family=family,
+                            evidence_ids=[ev.evidence_id] + b.evidence_ids,
+                            confidence=clamp(float(item.get("confidence", ev.reliability)) * b.confidence),
+                            limitations=[
+                                "Hash match indicates known indicator context, not independent malware confirmation.",
+                                "Do not execute sample. Hand off to MALINT.",
+                            ],
+                        )
+                    )
+
+            for fa in filesystem_artifacts:
+                if str(fa.sha256 or "").lower() == value:
+                    out.append(
+                        MalwareIndicator(
+                            indicator_id=new_id("MAL"),
+                            indicator_type="file_hash_match",
+                            value=value,
+                            source=item.get("source") or ev.source_id,
+                            match_object_type="filesystem_artifact",
+                            match_object_id=fa.artifact_id,
+                            state=MalwareState.MALICIOUS_ARTIFACT_CANDIDATE,
+                            family=family,
+                            evidence_ids=[ev.evidence_id] + fa.evidence_ids,
+                            confidence=clamp(float(item.get("confidence", ev.reliability)) * fa.confidence),
+                            limitations=[
+                                "File hash match does not prove execution.",
+                                "Hand off to MALINT for deep analysis.",
+                            ],
+                        )
+                    )
+
+        elif ioc_type == "domain":
+            # Domain IOC is contextual unless runtime/network evidence is supplied.
+            out.append(
+                MalwareIndicator(
+                    indicator_id=new_id("MAL"),
+                    indicator_type="domain_ioc_context",
+                    value=value,
+                    source=item.get("source") or ev.source_id,
+                    match_object_type="image_context",
+                    match_object_id=None,
+                    state=MalwareState.UNKNOWN,
+                    family=family,
+                    evidence_ids=[ev.evidence_id],
+                    confidence=clamp(float(item.get("confidence", ev.reliability))),
+                    limitations=["Embedded/domain IOC does not prove container contacted it."],
+                )
+            )
+
+    # Suspicious static heuristics: unsigned binary in temp path.
+    for b in binaries:
+        path = str(b.path or "").lower()
+        signing = b.signing or {}
+        unsigned = signing.get("valid") is False or not signing.get("publisher")
+
+        if unsigned and any(marker in path for marker in SUSPICIOUS_TEMP_PATHS):
+            out.append(
+                MalwareIndicator(
+                    indicator_id=new_id("MAL"),
+                    indicator_type="suspicious_unsigned_temp_binary",
+                    value=b.path or b.binary_id,
+                    source="static_heuristic",
+                    match_object_type="binary",
+                    match_object_id=b.binary_id,
+                    state=MalwareState.SUSPICIOUS_ARTIFACT_CANDIDATE,
+                    evidence_ids=b.evidence_ids,
+                    confidence=clamp(b.confidence * 0.65),
+                    limitations=[
+                        "Heuristic suspicion only; not malware confirmation.",
+                        "Legitimate installers/temporary build artifacts may match.",
+                        "Hand off to MALINT if consequential.",
+                    ],
+                )
+            )
+
+    return out
+
+
+def map_vulnerability_candidates(
+    packages: List[PackageObject],
+    vulnerability_data: List[Dict[str, Any]],
+    vex_records: List[VexRecord],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[VulnerabilityCandidate]:
+    out: List[VulnerabilityCandidate] = []
+
+    for item in vulnerability_data or []:
+        ev = make_evidence(item, case_id, "vulnerability_context", now, "vulnerability_database")
+        evidences.append(ev)
+
+        vuln_pkg = str(item.get("package") or item.get("product") or "").lower()
+        vuln_eco = str(item.get("ecosystem") or "").lower()
+        affected_versions = [str(x).lower() for x in item.get("affected_versions", []) or []]
+        affected_max = item.get("affected_max_version")
+        fixed_version = item.get("fixed_version")
+
+        for p in packages:
+            if str(p.name).lower() != vuln_pkg:
+                continue
+
+            if vuln_eco and str(p.ecosystem or "").lower() != vuln_eco:
+                continue
+
+            matched = False
+
+            if p.version and str(p.version).lower() in affected_versions:
+                matched = True
+            elif affected_max and version_lte(p.version, str(affected_max)):
+                matched = True
+            elif item.get("match_exact_version") and p.version == item.get("match_exact_version"):
+                matched = True
+
+            if not matched:
+                continue
+
+            state = VulnerabilityState.CANDIDATE
+            limitations = [
+                "Package presence does not prove vulnerability applicability.",
+                "Reachability and exploitability require VULNINT analysis.",
+                "Distribution backports may invalidate naive upstream version comparison.",
+                "Build-only packages may not be present in runtime image.",
+            ]
+
+            # Apply VEX.
+            for vex in vex_records:
+                product_match = (
+                    str(vex.product or "").lower() == str(p.name).lower()
+                    or str(vex.purl or "").lower() == str(p.purl or "").lower()
+                )
+                version_match = (
+                    vex.version is None
+                    or str(vex.version).lower() == str(p.version or "").lower()
+                )
+                cve_match = vex.vulnerability_id == item.get("cve")
+
+                if product_match and version_match and cve_match:
+                    status = str(vex.status or "").lower()
+                    if status == "not_affected":
+                        state = VulnerabilityState.NOT_AFFECTED_PER_VEX
+                        limitations.append("VEX states not affected; validate against actual image/configuration context.")
+                    elif status == "fixed":
+                        state = VulnerabilityState.FIXED_PER_VEX
+                        limitations.append("VEX states fixed; verify fixed version/backport in observed image.")
+                    elif status == "under_investigation":
+                        state = VulnerabilityState.UNDER_INVESTIGATION
+                        limitations.append("VEX under investigation; applicability unresolved.")
+
+            out.append(
+                VulnerabilityCandidate(
+                    vulnerability_id=str(item.get("vulnerability_id") or stable_id("VULN", item.get("cve"), p.package_id)),
+                    cve=item.get("cve"),
+                    package_name=p.name,
+                    package_version=p.version,
+                    purl=p.purl,
+                    cpe=p.cpe or item.get("cpe"),
+                    severity=item.get("severity"),
+                    epss=float(item["epss"]) if item.get("epss") is not None else None,
+                    kev=bool(item.get("kev")),
+                    fixed_version=fixed_version,
+                    affected_range=item.get("affected_range") or ",".join(affected_versions),
+                    source=item.get("source") or ev.source_id,
+                    state=state,
+                    evidence_ids=[ev.evidence_id] + p.evidence_ids,
+                    confidence=clamp(float(item.get("confidence", ev.reliability)) * p.confidence),
+                    limitations=sorted(set(limitations)),
+                )
+            )
+
+    return out
+
+
+def parse_runtime_instances(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[ContainerInstance]:
+    out: List[ContainerInstance] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "runtime_instance", now, "runtime_inventory")
+        evidences.append(ev)
+
+        out.append(
+            ContainerInstance(
+                container_id=str(item.get("container_id") or stable_id("CTR", item.get("image_digest"), item.get("host_or_node_reference"))),
+                image_digest=normalize_digest(item.get("image_digest")),
+                runtime=item.get("runtime"),
+                host_or_node_reference=item.get("host_or_node_reference"),
+                started_at=parse_dt(item.get("started_at")),
+                status=item.get("status"),
+                workload_reference=item.get("workload_reference"),
+                restart_count=int(item["restart_count"]) if item.get("restart_count") is not None else None,
+                security_context=dict(item.get("security_context", {}) or {}),
+                runtime_filesystem_drift=bool(item.get("runtime_filesystem_drift", False)),
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_kubernetes_workloads(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[KubernetesWorkload]:
+    out: List[KubernetesWorkload] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "kubernetes_workload", now, "kubernetes_inventory")
+        evidences.append(ev)
+
+        out.append(
+            KubernetesWorkload(
+                workload_id=str(item.get("workload_id") or stable_id("K8S", item.get("kind"), item.get("namespace"), item.get("pod_name"))),
+                kind=item.get("kind"),
+                namespace=item.get("namespace"),
+                cluster=item.get("cluster"),
+                pod_name=item.get("pod_name"),
+                container_name=item.get("container_name"),
+                image_reference=item.get("image_reference"),
+                image_digest=normalize_digest(item.get("image_digest")),
+                init_containers=[dict(x) for x in item.get("init_containers", []) or []],
+                sidecars=[dict(x) for x in item.get("sidecars", []) or []],
+                security_context=dict(item.get("security_context", {}) or {}),
+                image_pull_policy=item.get("image_pull_policy"),
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_cloud_context(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[CloudContext]:
+    out: List[CloudContext] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "cloud_context", now, "cloud_inventory")
+        evidences.append(ev)
+
+        out.append(
+            CloudContext(
+                context_id=str(item.get("context_id") or stable_id("CLOUD", item.get("service"), item.get("account_ref"))),
+                service=item.get("service"),
+                account_ref=item.get("account_ref"),
+                region=item.get("region"),
+                registry_ref=item.get("registry_ref"),
+                workload_ref=item.get("workload_ref"),
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+def parse_deployment_digests(
+    items: List[Dict[str, Any]],
+    case_id: str,
+    now: datetime,
+    evidences: List[EvidenceRef],
+) -> List[DeploymentDigest]:
+    out: List[DeploymentDigest] = []
+
+    for item in items or []:
+        ev = make_evidence(item, case_id, "deployment_digest", now, "kubernetes_inventory")
+        evidences.append(ev)
+
+        out.append(
+            DeploymentDigest(
+                deployment_id=str(item.get("deployment_id") or stable_id("DEP", item.get("workload_id"), item.get("observed_digest"))),
+                workload_id=item.get("workload_id"),
+                approved_digest=normalize_digest(item.get("approved_digest")),
+                observed_digest=normalize_digest(item.get("observed_digest")),
+                tag=item.get("tag"),
+                observed_at=parse_dt(item.get("observed_at")) or ev.observed_at,
+                state=DeploymentDriftType.UNKNOWN,
+                evidence_ids=[ev.evidence_id],
+                confidence=clamp(float(item.get("confidence", ev.reliability))),
+                limitations=sorted(set(item.get("limitations", []) or [])),
+            )
+        )
+
+    return out
+
+
+# ==============================================================================
+# ANALYSIS
+# ==============================================================================
+
+def resolve_base_image(
+    provenance: List[ProvenanceObject],
+    configs: List[ImageConfigObject],
+    layers: List[LayerObject],
+    image_digest: Optional[str],
+) -> Tuple[Optional[str], LineageState, List[str]]:
+    evidence_ids: List[str] = []
+
+    # Preferred: provenance materials.
+    for prov in provenance:
+        if image_digest and prov.artifact_digest != image_digest:
+            continue
+
+        for mat in prov.materials:
+            uri = str(mat.get("uri") or "")
+            digest = normalize_digest(mat.get("digest"))
+            if digest and ("@" in uri or "sha256" in digest):
+                evidence_ids.extend(prov.evidence_ids)
+                return digest, LineageState.SUPPORTED_BASE_IMAGE, sorted(set(evidence_ids))
+
+    # Secondary: config history FROM lines.
+    for cfg in configs:
+        for hist in cfg.history:
+            m = re.search(r"(?i)^#\s*\[.*?\]\s*FROM\s+(\S+)", hist)
+            if m:
+                base = m.group(1)
+                evidence_ids.extend(cfg.evidence_ids)
+                return base, LineageState.PROBABLE_BASE_IMAGE, sorted(set(evidence_ids))
+
+    # Tertiary: first layer fingerprint heuristic is weak.
+    if layers:
+        first = layers[0]
+        if first.digest:
+            evidence_ids.extend(first.evidence_ids)
+            return first.digest, LineageState.UNKNOWN, sorted(set(evidence_ids))
+
+    return None, LineageState.UNKNOWN, []
+
+
+def compute_drift_findings(
+    image_references: List[ImageReferenceObject],
+    tag_history: List[TagHistoryEntry],
+    deployment_digests: List[DeploymentDigest],
+    runtime_instances: List[ContainerInstance],
+    workloads: List[KubernetesWorkload],
+    policy: Dict[str, Any],
+) -> List[DriftFinding]:
+    findings: List[DriftFinding] = []
+
+    # Tag drift.
+    by_tag: Dict[str, Set[str]] = defaultdict(set)
+    tag_evidence: Dict[str, List[str]] = defaultdict(list)
+
+    for th in tag_history:
+        by_tag[th.tag].add(th.digest)
+        tag_evidence[th.tag].extend(th.evidence_ids)
+
+    for tag, digests in by_tag.items():
+        if len(digests) > 1:
+            findings.append(
+                DriftFinding(
+                    drift_id=new_id("DRIFT"),
+                    drift_type=DeploymentDriftType.TAG_DRIFT,
+                    object_id=tag,
+                    expected="single immutable digest per tag if enforced",
+                    observed=", ".join(sorted(digests)),
+                    time_range={"tag": tag},
+                    state=VerificationState.SUPPORTED,
+                    evidence_ids=sorted(set(tag_evidence[tag])),
+                    confidence=0.85,
+                    limitations=[
+                        "Tag drift may be normal CI/CD behavior.",
+                        "Tag drift alone does not prove malicious replacement.",
+                    ],
+                )
+            )
+
+    # Deployment drift.
+    ref_by_tag = {r.tag: r for r in image_references if r.tag}
+    workload_by_id = {w.workload_id: w for w in workloads}
+
+    for dep in deployment_digests:
+        expected = dep.approved_digest
+        observed = dep.observed_digest
+
+        if not expected and dep.tag and dep.tag in ref_by_tag:
+            expected = ref_by_tag[dep.tag].digest
+
+        if expected and observed and expected != observed:
+            dep.state = DeploymentDriftType.DEPLOYMENT_DRIFT
+            findings.append(
+                DriftFinding(
+                    drift_id=new_id("DRIFT"),
+                    drift_type=DeploymentDriftType.DEPLOYMENT_DRIFT,
+                    object_id=dep.deployment_id,
+                    expected=expected,
+                    observed=observed,
+                    time_range={"observed_at": dep.observed_at},
+                    state=VerificationState.SUPPORTED,
+                    evidence_ids=dep.evidence_ids,
+                    confidence=dep.confidence,
+                    limitations=[
+                        "Deployment drift requires authorization/change-ticket review before incident escalation.",
+                        "Could be approved rollout, rollback, mirror, or inventory lag.",
+                    ],
+                )
+            )
+        elif not observed and dep.tag:
+            findings.append(
+                DriftFinding(
+                    drift_id=new_id("DRIFT"),
+                    drift_type=DeploymentDriftType.MUTABLE_REFERENCE_RISK,
+                    object_id=dep.deployment_id,
+                    expected="digest-pinned reference",
+                    observed=f"tag:{dep.tag}",
+                    state=VerificationState.PARTIALLY_SUPPORTED,
+                    evidence_ids=dep.evidence_ids,
+                    confidence=0.65,
+                    limitations=["Mutable tag deployment increases reproducibility risk."],
+                )
+            )
+
+    # Runtime drift.
+    workload_by_pod = {w.pod_name: w for w in workloads if w.pod_name}
+
+    for inst in runtime_instances:
+        if inst.runtime_filesystem_drift:
+            findings.append(
+                DriftFinding(
+                    drift_id=new_id("DRIFT"),
+                    drift_type=DeploymentDriftType.RUNTIME_FILESYSTEM_DRIFT,
+                    object_id=inst.container_id,
+                    expected=inst.image_digest,
+                    observed="runtime filesystem differs from immutable image baseline",
+                    state=VerificationState.PARTIALLY_SUPPORTED,
+                    evidence_ids=inst.evidence_ids,
+                    confidence=inst.confidence,
+                    limitations=[
+                        "Runtime filesystem drift may be logs, cache, app-generated files, patching, or compromise.",
+                        "Do not label compromise automatically.",
+                    ],
+                )
+            )
+
+        wl = workload_by_id.get(inst.workload_reference or "") or workload_by_pod.get(inst.host_or_node_reference or "")
+        if wl and wl.image_digest and inst.image_digest and wl.image_digest != inst.image_digest:
+            findings.append(
+                DriftFinding(
+                    drift_id=new_id("DRIFT"),
+                    drift_type=DeploymentDriftType.DEPLOYMENT_DRIFT,
+                    object_id=inst.container_id,
+                    expected=wl.image_digest,
+                    observed=inst.image_digest,
+                    state=VerificationState.PARTIALLY_SUPPORTED,
+                    evidence_ids=inst.evidence_ids + wl.evidence_ids,
+                    confidence=min(inst.confidence, wl.confidence),
+                    limitations=["Workload inventory and runtime instance digest differ; resolve timing/inventory staleness."],
+                )
+            )
+
+    return findings
+
+
+def assess_hardening(
+    configs: List[ImageConfigObject],
+    workloads: List[KubernetesWorkload],
+    instances: List[ContainerInstance],
+) -> Dict[str, Any]:
+    observations: List[str] = []
+    risk_level = HardeningState.BASELINE
+
+    for cfg in configs:
+        user = str(cfg.user or "").lower()
+        if user in {"root", "0"}:
+            observations.append("Image config specifies root user.")
+            risk_level = HardeningState.ELEVATED_RISK_CONFIGURATION
+
+        if cfg.exposed_ports:
+            observations.append(f"Exposed port metadata present: {', '.join(cfg.exposed_ports)}.")
+            observations.append("Exposed port metadata does not prove Internet exposure.")
+
+    for wl in workloads:
+        sc = wl.security_context or {}
+        if sc.get("privileged") is True:
+            observations.append("Workload securityContext indicates privileged container.")
+            risk_level = HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION
+
+        host_paths = sc.get("hostPaths") or sc.get("host_paths") or []
+        if host_paths:
+            observations.append(f"Workload mounts host paths: {host_paths}.")
+            risk_level = HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION
+
+        if sc.get("dockerSocket") or sc.get("docker_socket"):
+            observations.append("Workload mounts container runtime socket.")
+            risk_level = HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION
+
+        caps = sc.get("capabilities") or {}
+        add_caps = caps.get("add") or []
+        if any(c in {"SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE", "DAC_OVERRIDE"} for c in add_caps):
+            observations.append(f"Workload adds sensitive Linux capabilities: {add_caps}.")
+            risk_level = HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION
+
+        if sc.get("readOnlyRootFilesystem") is False:
+            observations.append("Workload does not enforce read-only root filesystem.")
+
+    for inst in instances:
+        sc = inst.security_context or {}
+        if sc.get("privileged") is True:
+            observations.append(f"Runtime instance {inst.container_id} observed privileged.")
+            risk_level = HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION
+
+    limitations = [
+        "Hardening observations are defensive configuration context.",
+        "Root user or privileged config does not prove compromise.",
+        "No container-escape or exploitation instructions are provided.",
+    ]
+
+    return {
+        "state": risk_level.name,
+        "observations": sorted(set(observations)),
+        "limitations": limitations,
+    }
+
+
+def evaluate_policy_compliance(
+    policy: Dict[str, Any],
+    registries: List[RegistryObject],
+    image_references: List[ImageReferenceObject],
+    signatures: List[SignatureObject],
+    sbom_validation: Optional[SbomValidation],
+    configs: List[ImageConfigObject],
+    vulnerabilities: List[VulnerabilityCandidate],
+    drift_findings: List[DriftFinding],
+) -> Dict[str, Any]:
+    if not policy:
+        return {
+            "state": PolicyComplianceState.NOT_ASSESSED.name,
+            "checks": [],
+            "limitations": ["No organization policy supplied."],
+        }
+
+    checks: List[Dict[str, Any]] = []
+    failures = 0
+    warnings = 0
+
+    approved_registries = {str(x).lower() for x in policy.get("approved_registries", []) or []}
+    if approved_registries:
+        for reg in registries:
+            ok = str(reg.hostname or "").lower() in approved_registries
+            checks.append({"check": "approved_registry", "object_id": reg.registry_id, "passed": ok})
+            if not ok:
+                failures += 1
+
+    if policy.get("require_digest_pinning"):
+        for ref in image_references:
+            ok = bool(ref.digest)
+            checks.append({"check": "digest_pinning", "object_id": ref.image_reference_id, "passed": ok})
+            if not ok:
+                warnings += 1
+
+        for dr in drift_findings:
+            if dr.drift_type == DeploymentDriftType.MUTABLE_REFERENCE_RISK:
+                warnings += 1
+
+    if policy.get("require_signature"):
+        verified_digests = {s.digest_covered for s in signatures if s.state == SignatureState.VERIFIED}
+        for ref in image_references:
+            if ref.digest:
+                ok = ref.digest in verified_digests
+                checks.append({"check": "signature_verified", "object_id": ref.image_reference_id, "passed": ok})
+                if not ok:
+                    failures += 1
+
+    if policy.get("require_sbom"):
+        ok = sbom_validation is not None and sbom_validation.state in (
+            SbomValidationState.MATCHES_IMAGE_STRONGLY,
+            SbomValidationState.PARTIAL_MATCH,
+        )
+        checks.append({"check": "sbom_present_and_validated", "object_id": sbom_validation.sbom_id if sbom_validation else None, "passed": ok})
+        if not ok:
+            failures += 1
+
+    if policy.get("prohibit_root_user"):
+        for cfg in configs:
+            ok = str(cfg.user or "").lower() not in {"root", "0"}
+            checks.append({"check": "non_root_user", "object_id": cfg.evidence_ids[0] if cfg.evidence_ids else None, "passed": ok})
+            if not ok:
+                failures += 1
+
+    max_critical = policy.get("max_unresolved_critical_vulnerabilities")
+    if max_critical is not None:
+        unresolved_critical = [
+            v for v in vulnerabilities
+            if str(v.severity or "").lower() in {"critical", "high"}
+            and v.state in (VulnerabilityState.CANDIDATE, VulnerabilityState.APPLICABILITY_UNRESOLVED, VulnerabilityState.UNDER_INVESTIGATION)
+        ]
+        ok = len(unresolved_critical) <= int(max_critical)
+        checks.append({"check": "vulnerability_threshold", "object_id": None, "passed": ok, "count": len(unresolved_critical)})
+        if not ok:
+            failures += 1
+
+    if failures:
+        state = PolicyComplianceState.NON_COMPLIANT
+    elif warnings:
+        state = PolicyComplianceState.PARTIALLY_COMPLIANT
+    else:
+        state = PolicyComplianceState.COMPLIANT
+
+    return {
+        "state": state.name,
+        "checks": checks,
+        "limitations": [
+            "Policy compliance is separate from actual security, vulnerability applicability, or compromise.",
+        ],
+    }
+
+
+def detect_contradictions(
+    image_references: List[ImageReferenceObject],
+    tag_history: List[TagHistoryEntry],
+    deployment_digests: List[DeploymentDigest],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    sbom_validation: Optional[SbomValidation],
+    packages: List[PackageObject],
+    vulnerabilities: List[VulnerabilityCandidate],
+    drift_findings: List[DriftFinding],
+    secrets: List[SecretExposure],
+) -> List[Contradiction]:
+    out: List[Contradiction] = []
+
+    # Tag resolved digest vs deployment observed digest.
+    ref_by_tag = {r.tag: r for r in image_references if r.tag and r.digest}
+    for dep in deployment_digests:
+        ref = ref_by_tag.get(dep.tag or "")
+        if ref and ref.digest and dep.observed_digest and ref.digest != dep.observed_digest:
+            out.append(
+                Contradiction(
+                    contradiction_id=new_id("CONTRA"),
+                    contradiction_type="TAG_DEPLOYMENT_DIGEST_MISMATCH",
+                    description=f"Tag '{dep.tag}' resolved to {ref.digest}, but deployment observed {dep.observed_digest}.",
+                    object_ids=[dep.deployment_id],
+                    evidence_ids=ref.evidence_ids + dep.evidence_ids,
+                    severity="HIGH",
+                )
+            )
+
+    # Signature/provenance for approved digest but deployment uses different digest.
+    verified_digests = {s.digest_covered for s in signatures if s.state == SignatureState.VERIFIED}
+    provenance_digests = {p.artifact_digest for p in provenance if p.artifact_digest}
+
+    for dep in deployment_digests:
+        if dep.observed_digest and dep.approved_digest and dep.observed_digest != dep.approved_digest:
+            if dep.approved_digest in verified_digests and dep.observed_digest not in verified_digests:
+                out.append(
+                    Contradiction(
+                        contradiction_id=new_id("CONTRA"),
+                        contradiction_type="SIGNATURE_COVERAGE_MISMATCH",
+                        description="Approved digest has verified signature, but observed deployment digest does not.",
+                        object_ids=[dep.deployment_id],
+                        evidence_ids=dep.evidence_ids,
+                        severity="HIGH",
+                    )
+                )
+
+            if dep.approved_digest in provenance_digests and dep.observed_digest not in provenance_digests:
+                out.append(
+                    Contradiction(
+                        contradiction_id=new_id("CONTRA"),
+                        contradiction_type="PROVENANCE_COVERAGE_MISMATCH",
+                        description="Approved digest has provenance, but observed deployment digest does not.",
+                        object_ids=[dep.deployment_id],
+                        evidence_ids=dep.evidence_ids,
+                        severity="MEDIUM",
+                    )
+                )
+
+    # SBOM mismatch.
+    if sbom_validation and sbom_validation.state in (
+        SbomValidationState.PARTIAL_MATCH,
+        SbomValidationState.STALE_CANDIDATE,
+        SbomValidationState.DIFFERENT_BUILD_CANDIDATE,
+        SbomValidationState.INCONCLUSIVE,
+    ):
+        out.append(
+            Contradiction(
+                contradiction_id=new_id("CONTRA"),
+                contradiction_type="SBOM_IMAGE_MISMATCH",
+                description=sbom_validation.explanation,
+                object_ids=[sbom_validation.sbom_id],
+                evidence_ids=sbom_validation.evidence_ids,
+                severity="MEDIUM",
+            )
+        )
+
+    # Package version conflicts already in SBOM validation.
+    if sbom_validation and sbom_validation.version_conflicts:
+        out.append(
+            Contradiction(
+                contradiction_id=new_id("CONTRA"),
+                contradiction_type="PACKAGE_VERSION_CONFLICT",
+                description=f"SBOM and image package inventory disagree on {len(sbom_validation.version_conflicts)} component version(s).",
+                object_ids=[sbom_validation.sbom_id],
+                evidence_ids=sbom_validation.evidence_ids,
+                severity="MEDIUM",
+            )
+        )
+
+    # Historical secret deleted but present.
+    for sec in secrets:
+        if sec.state == SecretState.HISTORICAL_LAYER_PRESENT:
+            out.append(
+                Contradiction(
+                    contradiction_id=new_id("CONTRA"),
+                    contradiction_type="HISTORICAL_LAYER_SECRET",
+                    description="Secret evidence appears in historical layer despite later deletion; deletion does not remove image-history exposure.",
+                    object_ids=[sec.secret_id],
+                    evidence_ids=sec.evidence_ids,
+                    severity="HIGH",
+                )
+            )
+
+    # VEX vs vulnerability candidate.
+    for v in vulnerabilities:
+        if v.state == VulnerabilityState.NOT_AFFECTED_PER_VEX:
+            out.append(
+                Contradiction(
+                    contradiction_id=new_id("CONTRA"),
+                    contradiction_type="VEX_VS_SCANNER_CANDIDATE",
+                    description=f"Vulnerability candidate {v.cve} for {v.package_name} is marked not affected by VEX; preserve both signals.",
+                    object_ids=[v.vulnerability_id],
+                    evidence_ids=v.evidence_ids,
+                    severity="LOW",
+                )
+            )
+
+    return out
+
+
+def build_hypotheses(
+    image_references: List[ImageReferenceObject],
+    deployment_digests: List[DeploymentDigest],
+    drift_findings: List[DriftFinding],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    sbom_validation: Optional[SbomValidation],
+    secrets: List[SecretExposure],
+    malware: List[MalwareIndicator],
+    vulnerabilities: List[VulnerabilityCandidate],
+    hardening: Dict[str, Any],
+    contradictions: List[Contradiction],
+    known_facts: Dict[str, Any],
+) -> List[Hypothesis]:
+    hypotheses: List[Hypothesis] = []
+
+    deployment_drift = any(d.drift_type == DeploymentDriftType.DEPLOYMENT_DRIFT for d in drift_findings)
+    tag_drift = any(d.drift_type == DeploymentDriftType.TAG_DRIFT for d in drift_findings)
+    runtime_drift = any(d.drift_type == DeploymentDriftType.RUNTIME_FILESYSTEM_DRIFT for d in drift_findings)
+    malware_candidate = any(m.state == MalwareState.MALICIOUS_ARTIFACT_CANDIDATE for m in malware)
+    secret_present = any(s.state in (SecretState.PRESENT, SecretState.HISTORICAL_LAYER_PRESENT) for s in secrets)
+    sbom_mismatch = bool(sbom_validation and sbom_validation.state != SbomValidationState.MATCHES_IMAGE_STRONGLY)
+    high_risk_hardening = hardening.get("state") == HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION.name
+
+    approved_digests = {d.approved_digest for d in deployment_digests if d.approved_digest}
+    observed_digests = {d.observed_digest for d in deployment_digests if d.observed_digest}
+    verified_digests = {s.digest_covered for s in signatures if s.state == SignatureState.VERIFIED}
+    provenance_digests = {p.artifact_digest for p in provenance if p.artifact_digest}
+
+    hypotheses.append(
+        Hypothesis(
+            id="H1",
+            description="Deployment runs approved, signed, provenance-backed image digest.",
+            support_evidence=[
+                "No deployment drift finding." if not deployment_drift else "",
+                "Observed digest has verified signature." if observed_digests & verified_digests else "",
+                "Observed digest has provenance." if observed_digests & provenance_digests else "",
+            ],
+            opposition_evidence=[
+                "Deployment drift observed." if deployment_drift else "",
+                "Observed digest lacks verified signature." if observed_digests and not (observed_digests & verified_digests) else "",
+                "Observed digest lacks provenance." if observed_digests and not (observed_digests & provenance_digests) else "",
+            ],
+            unknowns=["Authorization of any digest change", "Registry mirror/proxy behavior"],
+            falsification_criteria="Reject if deployed digest differs from approved digest without authorized change evidence.",
+            status=HypothesisStatus.CANDIDATE if not deployment_drift else HypothesisStatus.REJECTED,
+        )
+    )
+
+    hypotheses.append(
+        Hypothesis(
+            id="H2",
+            description="Mutable tag caused workload to pull newer unapproved digest.",
+            support_evidence=[
+                "Tag drift observed." if tag_drift else "",
+                "Deployment drift observed." if deployment_drift else "",
+                "Mutable reference risk observed." if any(d.drift_type == DeploymentDriftType.MUTABLE_REFERENCE_RISK for d in drift_findings) else "",
+            ],
+            opposition_evidence=[
+                "Digest pinning enforced." if known_facts.get("digest_pinning_enforced") else "",
+                "No tag drift." if not tag_drift else "",
+            ],
+            unknowns=["CI/CD release intent", "Approval record"],
+            falsification_criteria="Reject if deployed digest matches approved digest or change ticket authorizes digest movement.",
+            status=HypothesisStatus.ACTIVE if tag_drift or deployment_drift else HypothesisStatus.INCONCLUSIVE,
+        )
+    )
+
+    hypotheses.append(
+        Hypothesis(
+            id="H3",
+            description="Inventory is stale and workload already updated to approved newer digest.",
+            support_evidence=[
+                "Deployment drift observed." if deployment_drift else "",
+                "Tag drift observed." if tag_drift else "",
+            ],
+            opposition_evidence=[
+                "Runtime inventory timestamp recent." if known_facts.get("runtime_inventory_fresh") else "",
+                "Approved digest and observed digest match." if not deployment_drift else "",
+            ],
+            unknowns=["Inventory collection time", "Rollout completion status"],
+            falsification_criteria="Reject if authorized deployment history confirms observed digest was not approved.",
+            status=HypothesisStatus.CANDIDATE if deployment_drift else HypothesisStatus.INCONCLUSIVE,
+        )
+    )
+
+    hypotheses.append(
+        Hypothesis(
+            id="H4",
+            description="Registry mirror/proxy served equivalent signed artifact with different manifest digest.",
+            support_evidence=[
+                "Deployment drift observed." if deployment_drift else "",
+                "Mirror/proxy registry type present." if any(r.registry_type == RegistryType.MIRROR or r.registry_type == RegistryType.PROXY_CACHE for r in []) else "",
+            ],
+            opposition_evidence=[
+                "Digest is content-addressed and should match for identical manifest.",
+                "No mirror evidence supplied.",
+            ],
+            unknowns=["Mirror digest mapping", "Upstream artifact equivalence"],
+            falsification_criteria="Reject if observed digest is not cryptographically equivalent to approved artifact.",
+            status=HypothesisStatus.INCONCLUSIVE,
+        )
+    )
+
+    hypotheses.append(
+        Hypothesis(
+            id="H5",
+            description="Runtime container was modified after start (runtime compromise or operational change).",
+            support_evidence=[
+                "Runtime filesystem drift observed." if runtime_drift else "",
+                "High-risk runtime configuration present." if high_risk_hardening else "",
+            ],
+            opposition_evidence=[
+                "Runtime drift may be logs/cache/application files.",
+                "No process/network forensic evidence supplied.",
+            ],
+            unknowns=["Process lineage", "Network egress", "File integrity", "Incident scope"],
+            falsification_criteria="Reject if runtime differences are explained by authorized application behavior and integrity checks.",
+            status=HypothesisStatus.CANDIDATE if runtime_drift or high_risk_hardening else HypothesisStatus.INCONCLUSIVE,
+        )
+    )
+
+    hypotheses.append(
+        Hypothesis(
+            id="H6",
+            description="Image contains malicious or suspicious artifact introduced through supply chain.",
+            support_evidence=[
+                "Malware artifact candidate observed." if malware_candidate else "",
+                "Secret exposure present." if secret_present else "",
+                "SBOM/image mismatch." if sbom_mismatch else "",
+                "Material contradictions." if contradictions else "",
+            ],
+            opposition_evidence=[
+                "No malware indicator match." if not malware_candidate else "",
+                "Signature/provenance verified for deployed digest." if observed_digests & verified_digests and observed_digests & provenance_digests else "",
+            ],
+            unknowns=["Malware family", "Build pipeline compromise", "Base image compromise", "Dependency compromise"],
+            falsification_criteria="Reject if suspicious artifact is explained by legitimate package/build artifact and independent provenance validates image.",
+            status=HypothesisStatus.CANDIDATE if malware_candidate or (secret_present and sbom_mismatch) else HypothesisStatus.INCONCLUSIVE,
+        )
+    )
+
+    hypotheses.append(
+        Hypothesis(
+            id="H7",
+            description="Vulnerability candidates are present but applicability is unresolved.",
+            support_evidence=[
+                f"{len(vulnerabilities)} vulnerability candidate(s) mapped." if vulnerabilities else "",
+            ],
+            opposition_evidence=[
+                "VEX marks some components not affected." if any(v.state == VulnerabilityState.NOT_AFFECTED_PER_VEX for v in vulnerabilities) else "",
+            ],
+            unknowns=["Reachability", "Configuration", "Backports", "Runtime exposure"],
+            falsification_criteria="Downgrade if VULNINT confirms not applicable or fixed by backport.",
+            status=HypothesisStatus.ACTIVE if vulnerabilities else HypothesisStatus.INCONCLUSIVE,
+        )
+    )
+
+    return [h for h in hypotheses if h.support_evidence or h.opposition_evidence or h.status != HypothesisStatus.REJECTED]
+
+
+def independent_skeptic_review(
+    drift_findings: List[DriftFinding],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    sbom_validation: Optional[SbomValidation],
+    secrets: List[SecretExposure],
+    malware: List[MalwareIndicator],
+    vulnerabilities: List[VulnerabilityCandidate],
+    contradictions: List[Contradiction],
+    hardening: Dict[str, Any],
+    known_facts: Dict[str, Any],
+) -> Dict[str, Any]:
+    flags: List[str] = []
+    alternatives: List[str] = []
+    questions: List[str] = []
+
+    deployment_drift = any(d.drift_type == DeploymentDriftType.DEPLOYMENT_DRIFT for d in drift_findings)
+    runtime_drift = any(d.drift_type == DeploymentDriftType.RUNTIME_FILESYSTEM_DRIFT for d in drift_findings)
+    malware_candidate = any(m.state == MalwareState.MALICIOUS_ARTIFACT_CANDIDATE for m in malware)
+    secret_present = any(s.state in (SecretState.PRESENT, SecretState.HISTORICAL_LAYER_PRESENT) for s in secrets)
+    sbom_mismatch = bool(sbom_validation and sbom_validation.state != SbomValidationState.MATCHES_IMAGE_STRONGLY)
+
+    if deployment_drift:
+        alternatives.extend(
+            [
+                "Approved CI/CD rollout.",
+                "Authorized rollback.",
+                "Registry mirror/proxy digest mapping.",
+                "Stale deployment inventory.",
+            ]
+        )
+        flags.append("DEPLOYMENT_DRIFT_REQUIRES_AUTHORIZATION_REVIEW")
+
+    if runtime_drift:
+        alternatives.extend(
+            [
+                "Application logs/cache.",
+                "Temporary runtime files.",
+                "Authorized in-container patching.",
+                "Runtime compromise.",
+            ]
+        )
+        flags.append("RUNTIME_DRIFT_NOT_AUTOMATIC_COMPROMISE")
+
+    if malware_candidate:
+        alternatives.extend(
+            [
+                "Known benign dual-use tool.",
+                "False positive from hash reputation feed.",
+                "Build artifact temporarily present.",
+                "Legitimate package with suspicious path.",
+            ]
+        )
+        flags.append("MALWARE_CANDIDATE_REQUIRES_MALINT")
+
+    if secret_present:
+        alternatives.extend(
+            [
+                "Placeholder/example secret.",
+                "Expired credential.",
+                "Test fixture.",
+                "Historical layer artifact.",
+            ]
+        )
+        flags.append("SECRET_VALIDITY_NOT_TESTED")
+
+    if sbom_mismatch:
+        alternatives.extend(
+            [
+                "SBOM generated for different architecture.",
+                "SBOM generated from source not final image.",
+                "Scanner/SBOM tool coverage gap.",
+                "Stale SBOM.",
+            ]
+        )
+        flags.append("SBOM_MISMATCH_NOT_AUTOMATIC_TAMPERING")
+
+    if vulnerabilities:
+        alternatives.extend(
+            [
+                "Distro backport fixes vulnerability without version change.",
+                "Package present but not reachable.",
+                "Build-only dependency not in runtime image.",
+                "VEX not affected statement.",
+            ]
+        )
+        flags.append("VULNERABILITY_APPLICABILITY_UNRESOLVED")
+
+    if hardening.get("state") == HardeningState.HIGH_RISK_RUNTIME_CONFIGURATION.name:
+        alternatives.append("High-risk runtime configuration may be legacy, authorized, or misconfigured rather than exploited.")
+        flags.append("HIGH_RISK_CONFIGURATION_NOT_ACTIVE_EXPLOITATION")
+
+    if contradictions:
+        flags.append("CONTRADICTIONS_PRESENT")
+        alternatives.append("Contradictions may reflect timing, mirror, stale inventory, parser gap, or multi-arch differences.")
+
+    questions.extend(
+        [
+            "Did we resolve the immutable digest rather than trust the tag?",
+            "Could the tag have legitimately moved through CI/CD?",
+            "Does the SBOM correspond to the same platform/build?",
+            "Could vulnerable package be build-only or backported?",
+            "Could secret be placeholder, expired, or historical-layer only?",
+            "Are multiple scanner findings dependent on same vulnerability feed?",
+            "Does signature prove what we think it proves?",
+            "Does provenance prove source-code trust or only build relationship?",
+            "Is runtime drift operational noise or forensic signal?",
+            "What evidence would disprove supply-chain compromise?",
+        ]
+    )
+
+    return {
+        "flags": sorted(set(flags)),
+        "alternative_explanations": sorted(set(alternatives)),
+        "diagnostic_questions": questions,
+        "review_outcome": "PARTIAL_AGREEMENT" if flags else "AGREE",
+        "boundary": "Static-first, no execution, no secret use, no registry tampering, no container exploitation.",
+    }
+
+
+def build_facts(
+    image_references: List[ImageReferenceObject],
+    manifests: List[ManifestObject],
+    layers: List[LayerObject],
+    packages: List[PackageObject],
+    sbom_validation: Optional[SbomValidation],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    secrets: List[SecretExposure],
+    malware: List[MalwareIndicator],
+    vulnerabilities: List[VulnerabilityCandidate],
+    drift_findings: List[DriftFinding],
+    hardening: Dict[str, Any],
+    policy_compliance: Dict[str, Any],
+    contradictions: List[Contradiction],
+) -> List[FactRecord]:
+    facts: List[FactRecord] = []
+
+    for ref in image_references:
+        if ref.digest:
+            facts.append(
+                FactRecord(
+                    fact_id=new_id("FACT"),
+                    statement=f"Image reference resolved to immutable digest {ref.digest}.",
+                    claim_type="DIRECT_ARTIFACT_FACT",
+                    verification_state=VerificationState.SUPPORTED,
+                    evidence_ids=ref.evidence_ids,
+                    object_ids=[ref.image_reference_id],
+                    confidence=ref.confidence,
+                    limitations=["Digest identifies content manifest; platform variant must be resolved separately."],
+                )
+            )
+        else:
+            facts.append(
+                FactRecord(
+                    fact_id=new_id("FACT"),
+                    statement=f"Image reference {ref.original_reference} is tag-based and mutable.",
+                    claim_type="DIRECT_ARTIFACT_FACT",
+                    verification_state=VerificationState.SUPPORTED,
+                    evidence_ids=ref.evidence_ids,
+                    object_ids=[ref.image_reference_id],
+                    confidence=ref.confidence,
+                    limitations=["Tag alone does not establish image identity."],
+                )
+            )
+
+    for m in manifests:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"OCI manifest observed: digest={m.manifest_digest}, layers={len(m.layer_digests)}.",
+                claim_type="DIRECT_ARTIFACT_FACT",
+                verification_state=VerificationState.SUPPORTED,
+                evidence_ids=m.evidence_ids,
+                object_ids=[m.manifest_digest or "unknown"],
+                confidence=m.confidence,
+                limitations=["Manifest digest is not layer digest or file hash."],
+            )
+        )
+
+    for p in packages[:50]:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Package/component present in image: {p.name} {p.version or ''} ({p.ecosystem or 'unknown'}).",
+                claim_type="DIRECT_ARTIFACT_FACT",
+                verification_state=VerificationState.SUPPORTED,
+                evidence_ids=p.evidence_ids,
+                object_ids=[p.package_id],
+                confidence=p.confidence,
+                limitations=["Package presence does not prove execution, reachability, or vulnerability applicability."],
+            )
+        )
+
+    if sbom_validation:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"SBOM validation state: {sbom_validation.state.name}. {sbom_validation.explanation}",
+                claim_type="CORRELATED_FACT",
+                verification_state=VerificationState.PARTIALLY_SUPPORTED
+                if sbom_validation.state != SbomValidationState.MATCHES_IMAGE_STRONGLY
+                else VerificationState.SUPPORTED,
+                evidence_ids=sbom_validation.evidence_ids,
+                object_ids=[sbom_validation.sbom_id],
+                confidence=sbom_validation.confidence,
+                limitations=sbom_validation.limitations,
+            )
+        )
+
+    for sig in signatures:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Signature state for digest {sig.digest_covered}: {sig.state.name}.",
+                claim_type="DIRECT_ARTIFACT_FACT",
+                verification_state=VerificationState.SUPPORTED if sig.state == SignatureState.VERIFIED else VerificationState.PARTIALLY_SUPPORTED,
+                evidence_ids=sig.evidence_ids,
+                object_ids=[sig.signature_id],
+                confidence=sig.confidence,
+                limitations=sig.limitations,
+            )
+        )
+
+    for prov in provenance:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Provenance state for digest {prov.artifact_digest}: {prov.state.name}.",
+                claim_type="CORRELATED_FACT",
+                verification_state=VerificationState.PARTIALLY_SUPPORTED,
+                evidence_ids=prov.evidence_ids,
+                object_ids=[prov.provenance_id],
+                confidence=prov.confidence,
+                limitations=prov.limitations,
+            )
+        )
+
+    for sec in secrets:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Secret exposure detected and redacted: type={sec.secret_type}, state={sec.state.name}.",
+                claim_type="DIRECT_ARTIFACT_FACT",
+                verification_state=VerificationState.SUPPORTED,
+                evidence_ids=sec.evidence_ids,
+                object_ids=[sec.secret_id],
+                confidence=sec.confidence,
+                limitations=sec.limitations,
+            )
+        )
+
+    for mal in malware:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Malware indicator context: {mal.indicator_type} state={mal.state.name}.",
+                claim_type="CORRELATED_FACT" if mal.state == MalwareState.MALICIOUS_ARTIFACT_CANDIDATE else "ANALYTICAL_INFERENCE",
+                verification_state=VerificationState.PARTIALLY_SUPPORTED,
+                evidence_ids=mal.evidence_ids,
+                object_ids=[mal.indicator_id],
+                confidence=mal.confidence,
+                limitations=mal.limitations,
+            )
+        )
+
+    for v in vulnerabilities:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Vulnerability candidate: {v.cve or v.vulnerability_id} affects candidate {v.package_name} {v.package_version}; state={v.state.name}.",
+                claim_type="CORRELATED_FACT",
+                verification_state=VerificationState.PARTIALLY_SUPPORTED,
+                evidence_ids=v.evidence_ids,
+                object_ids=[v.vulnerability_id],
+                confidence=v.confidence,
+                limitations=v.limitations,
+            )
+        )
+
+    for d in drift_findings:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Drift finding: {d.drift_type.name} object={d.object_id} expected={d.expected} observed={d.observed}.",
+                claim_type="CORRELATED_FACT",
+                verification_state=d.state,
+                evidence_ids=d.evidence_ids,
+                object_ids=[d.drift_id],
+                confidence=d.confidence,
+                limitations=d.limitations,
+            )
+        )
+
+    facts.append(
+        FactRecord(
+            fact_id=new_id("FACT"),
+            statement=f"Hardening context: {hardening.get('state')}.",
+            claim_type="ANALYTICAL_INFERENCE",
+            verification_state=VerificationState.PARTIALLY_SUPPORTED,
+            evidence_ids=[],
+            object_ids=[],
+            confidence=0.7,
+            limitations=hardening.get("limitations", []),
+        )
+    )
+
+    facts.append(
+        FactRecord(
+            fact_id=new_id("FACT"),
+            statement=f"Policy compliance state: {policy_compliance.get('state')}.",
+            claim_type="ANALYTICAL_INFERENCE",
+            verification_state=VerificationState.PARTIALLY_SUPPORTED,
+            evidence_ids=[],
+            object_ids=[],
+            confidence=0.7,
+            limitations=policy_compliance.get("limitations", []),
+        )
+    )
+
+    for c in contradictions:
+        facts.append(
+            FactRecord(
+                fact_id=new_id("FACT"),
+                statement=f"Contradiction: {c.contradiction_type} — {c.description}",
+                claim_type="DIRECT_ARTIFACT_FACT" if c.severity == "HIGH" else "CORRELATED_FACT",
+                verification_state=VerificationState.DISPUTED,
+                evidence_ids=c.evidence_ids,
+                object_ids=c.object_ids,
+                confidence=0.75,
+                limitations=["Contradictions must be preserved, not silently resolved."],
+            )
+        )
+
+    facts.append(
+        FactRecord(
+            fact_id=new_id("FACT"),
+            statement="No real-world threat actor, campaign, or malicious intent is established by container artifact intelligence alone.",
+            claim_type="UNKNOWN",
+            verification_state=VerificationState.INCONCLUSIVE,
+            evidence_ids=[],
+            object_ids=[],
+            confidence=0.99,
+            limitations=["Attribution requires CTI/INCIDENTINT/MALINT and human review."],
+        )
+    )
+
+    return facts
+
+
+def build_knowledge_gaps(
+    image_references: List[ImageReferenceObject],
+    manifests: List[ManifestObject],
+    packages: List[PackageObject],
+    sbom_validation: Optional[SbomValidation],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    deployment_digests: List[DeploymentDigest],
+    vulnerabilities: List[VulnerabilityCandidate],
+    secrets: List[SecretExposure],
+    malware: List[MalwareIndicator],
+    contradictions: List[Contradiction],
+) -> List[Gap]:
+    gaps: List[Gap] = []
+
+    def add_gap(description: str, importance: str, recommended_source: str, specialist: str, expected_information_value: str) -> None:
+        gaps.append(
+            Gap(
+                gap_id=new_id("GAP"),
+                description=description,
+                importance=importance,
+                recommended_source=recommended_source,
+                specialist=specialist,
+                expected_information_value=expected_information_value,
+            )
+        )
+
+    if not any(ref.digest for ref in image_references):
+        add_gap(
+            "Immutable image digest unresolved.",
+            "HIGH",
+            "OCI registry API / manifest pull by digest",
+            "CONTAINERINT",
+            "Establishes exact image identity and avoids tag mutability ambiguity.",
+        )
+
+    if not manifests:
+        add_gap(
+            "OCI manifest unavailable.",
+            "HIGH",
+            "registry manifest API / authorized image tarball",
+            "CONTAINERINT",
+            "Enables layer, config, platform, and digest validation.",
+        )
+
+    if not packages:
+        add_gap(
+            "Package inventory unavailable.",
+            "HIGH",
+            "filesystem reconstruction / SBOM / package DB parsing",
+            "CONTAINERINT / PACKAGEINT",
+            "Enables component, vulnerability, and SBOM validation context.",
+        )
+
+    if sbom_validation is None:
+        add_gap(
+            "SBOM unavailable or not validated.",
+            "MEDIUM",
+            "build pipeline SBOM / scanner SBOM / Syft-like authorized output",
+            "CONTAINERINT / PACKAGEINT",
+            "Improves component inventory and supply-chain traceability.",
+        )
+    elif sbom_validation.state in (
+        SbomValidationState.STALE_CANDIDATE,
+        SbomValidationState.DIFFERENT_BUILD_CANDIDATE,
+        SbomValidationState.INCONCLUSIVE,
+    ):
+        add_gap(
+            f"SBOM validation uncertain: {sbom_validation.state.name}.",
+            "HIGH",
+            "regenerate SBOM from exact image digest/platform",
+            "CONTAINERINT",
+            "Resolves whether SBOM corresponds to observed image.",
+        )
+
+    if not any(s.state == SignatureState.VERIFIED for s in signatures):
+        add_gap(
+            "Image signature not verified for deployed digest.",
+            "HIGH",
+            "Cosign/Sigstore verification against deployed digest",
+            "CONTAINERINT / CERTINT",
+            "Confirms artifact integrity/signer relationship.",
+        )
+
+    if not any(p.state in (ProvenanceState.VERIFIED_BUILD_SOURCE, ProvenanceState.SUPPORTED_BUILD_SOURCE) for p in provenance):
+        add_gap(
+            "Build provenance unresolved for deployed digest.",
+            "HIGH",
+            "SLSA/in-toto attestation / CI build record",
+            "CONTAINERINT / SUPPLYCHAININT",
+            "Connects image digest to build source/pipeline where authorized.",
+        )
+
+    if not deployment_digests:
+        add_gap(
+            "Deployed digest unknown.",
+            "HIGH",
+            "authorized Kubernetes/runtime inventory",
+            "CONTAINERINT / CLOUDINT / KUBERNETES",
+            "Determines whether observed image is actually running and where.",
+        )
+
+    if vulnerabilities:
+        add_gap(
+            "Vulnerability applicability unresolved.",
+            "HIGH",
+            "VULNINT reachability/backport/configuration analysis",
+            "VULNINT",
+            "Converts package/CVE candidate into prioritized applicability assessment.",
+        )
+
+    if secrets:
+        add_gap(
+            "Secret validity and blast radius unresolved.",
+            "HIGH",
+            "CREDINT authorized credential exposure workflow",
+            "CREDINT",
+            "Handles exposure without using/testing secrets.",
+        )
+
+    if malware:
+        add_gap(
+            "Malware artifact confirmation unresolved.",
+            "HIGH",
+            "MALINT safe static/dynamic sandbox",
+            "MALINT",
+            "Determines maliciousness/family/behavior without executing on analyst host.",
+        )
+
+    if contradictions:
+        add_gap(
+            "Evidence contradictions require source/time/platform reconciliation.",
+            "HIGH",
+            "registry history / manifest inspection / deployment timeline",
+            "CONTAINERINT",
+            "Prevents false supply-chain conclusions from tag/mirror/SBOM/platform artifacts.",
+        )
+
+    return gaps
+
+
+def build_graphical_memory(
+    registries: List[RegistryObject],
+    repositories: List[RepositoryObject],
+    image_references: List[ImageReferenceObject],
+    tag_history: List[TagHistoryEntry],
+    manifests: List[ManifestObject],
+    platforms: List[PlatformVariant],
+    configs: List[ImageConfigObject],
+    layers: List[LayerObject],
+    packages: List[PackageObject],
+    binaries: List[BinaryObject],
+    sboms: List[SbomObject],
+    sbom_validation: Optional[SbomValidation],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    secrets: List[SecretExposure],
+    malware: List[MalwareIndicator],
+    vulnerabilities: List[VulnerabilityCandidate],
+    workloads: List[KubernetesWorkload],
+    deployments: List[DeploymentDigest],
+    drift_findings: List[DriftFinding],
+    facts: List[FactRecord],
+    hypotheses: List[Hypothesis],
+    contradictions: List[Contradiction],
+    gaps: List[Gap],
+) -> Dict[str, Any]:
+    nodes: Dict[str, GraphNode] = {}
+    edges: List[GraphEdge] = []
+
+    def add_node(node_id: str, node_type: str, attributes: Dict[str, Any]) -> None:
+        nodes[node_id] = GraphNode(node_id=node_id, type=node_type, attributes=attributes)
+
+    def add_edge(source: str, target: str, relation: str, confidence: float, evidence_ids: List[str]) -> None:
+        edges.append(
+            GraphEdge(
+                edge_id=new_id("EDGE"),
+                source_node_id=source,
+                target_node_id=target,
+                relation=relation,
+                confidence=confidence,
+                evidence_ids=sorted(set(evidence_ids)),
+            )
+        )
+
+    for reg in registries:
+        add_node(f"N_REGISTRY_{reg.registry_id}", "Registry", {"hostname": reg.hostname, "type": reg.registry_type.name})
+
+    for repo in repositories:
+        repo_node = f"N_REPO_{repo.registry_id}_{repo.repository_name}"
+        add_node(repo_node, "ContainerRepository", {"namespace": repo.namespace, "visibility": repo.visibility})
+        add_edge(repo_node, f"N_REGISTRY_{repo.registry_id}", "HOSTED_IN", repo.confidence, repo.evidence_ids)
+
+    for ref in image_references:
+        ref_node = f"N_IMGREF_{ref.image_reference_id}"
+        add_node(
+            ref_node,
+            "ImageReference",
+            {"original": ref.original_reference, "tag": ref.tag, "digest": ref.digest},
+        )
+        if ref.repository:
+            # Approximate repo node by registry/repository if available.
+            repo_node = f"N_REPO_{ref.registry_id}_{ref.repository}" if ref.registry_id else None
+            if repo_node and repo_node in nodes:
+                add_edge(ref_node, repo_node, "RESOLVES_TO_DIGEST", ref.confidence, ref.evidence_ids)
+        if ref.digest:
+            add_node(f"N_IMAGE_{ref.digest}", "Image", {"digest": ref.digest})
+            add_edge(ref_node, f"N_IMAGE_{ref.digest}", "RESOLVES_TO_DIGEST", ref.confidence, ref.evidence_ids)
+
+    for th in tag_history:
+        th_node = f"N_TAGHIST_{th.entry_id}"
+        add_node(th_node, "TagHistory", {"tag": th.tag, "digest": th.digest, "valid_from": th.valid_from, "valid_to": th.valid_to})
+        add_node(f"N_IMAGE_{th.digest}", "Image", {"digest": th.digest})
+        add_edge(th_node, f"N_IMAGE_{th.digest}", "TAG_POINTS_TO", 0.9, th.evidence_ids)
+
+    for m in manifests:
+        m_node = f"N_MANIFEST_{m.manifest_digest or new_id('MAN')}"
+        add_node(m_node, "Manifest", {"media_type": m.media_type, "config_digest": m.config_digest, "layers": len(m.layer_digests)})
+        if m.manifest_digest:
+            add_node(f"N_IMAGE_{m.manifest_digest}", "Image", {"digest": m.manifest_digest})
+            add_edge(m_node, f"N_IMAGE_{m.manifest_digest}", "HAS_MANIFEST", m.confidence, m.evidence_ids)
+
+    for p in platforms:
+        if p.manifest_digest:
+            p_node = f"N_PLATFORM_{p.manifest_digest}"
+            add_node(p_node, "PlatformVariant", {"os": p.os, "architecture": p.architecture, "variant": p.variant})
+            add_edge(p_node, f"N_MANIFEST_{p.manifest_digest}", "HAS_VARIANT", 0.9, p.evidence_ids)
+
+    for cfg in configs:
+        cfg_node = f"N_CONFIG_{cfg.evidence_ids[0] if cfg.evidence_ids else new_id('CFG')}"
+        add_node(
+            cfg_node,
+            "ImageConfig",
+            {"user": cfg.user, "entrypoint": cfg.entrypoint, "cmd": cfg.cmd, "environment_keys": list(cfg.environment.keys())},
+        )
+
+    for layer in layers:
+        l_node = f"N_LAYER_{layer.layer_index}_{layer.digest or new_id('L')}"
+        add_node(l_node, "Layer", {"index": layer.layer_index, "digest": layer.digest, "whiteouts": layer.whiteouts})
+
+    for pkg in packages:
+        pkg_node = f"N_PACKAGE_{pkg.package_id}"
+        add_node(pkg_node, "Package", {"name": pkg.name, "version": pkg.version, "ecosystem": pkg.ecosystem, "purl": pkg.purl})
+
+    for b in binaries:
+        bin_node = f"N_BINARY_{b.binary_id}"
+        add_node(bin_node, "Binary", {"path": b.path, "sha256": b.sha256, "layer_index": b.layer_index})
+
+    for sbom in sboms:
+        sbom_node = f"N_SBOM_{sbom.sbom_id}"
+        add_node(sbom_node, "SBOM", {"format": sbom.format, "components": len(sbom.components), "generated_at": sbom.generated_at})
+
+    if sbom_validation:
+        val_node = f"N_SBOMVAL_{sbom_validation.validation_id}"
+        add_node(val_node, "SBOMValidation", {"state": sbom_validation.state.name, "explanation": sbom_validation.explanation})
+        add_edge(val_node, f"N_SBOM_{sbom_validation.sbom_id}", "SUPPORTED_BY", sbom_validation.confidence, sbom_validation.evidence_ids)
+
+    for sig in signatures:
+        sig_node = f"N_SIG_{sig.signature_id}"
+        add_node(sig_node, "Signature", {"digest": sig.digest_covered, "state": sig.state.name, "signer": sig.signer_identity_claim})
+        if sig.digest_covered:
+            add_node(f"N_IMAGE_{sig.digest_covered}", "Image", {"digest": sig.digest_covered})
+            add_edge(sig_node, f"N_IMAGE_{sig.digest_covered}", "SIGNED_BY", sig.confidence, sig.evidence_ids)
+
+    for prov in provenance:
+        prov_node = f"N_PROV_{prov.provenance_id}"
+        add_node(prov_node, "Provenance", {"builder": prov.builder, "repo": prov.source_repository, "commit": prov.commit, "state": prov.state.name})
+        if prov.artifact_digest:
+            add_node(f"N_IMAGE_{prov.artifact_digest}", "Image", {"digest": prov.artifact_digest})
+            add_edge(prov_node, f"N_IMAGE_{prov.artifact_digest}", "ATTESTED_BY", prov.confidence, prov.evidence_ids)
+
+    for sec in secrets:
+        sec_node = f"N_SECRET_{sec.secret_id}"
+        add_node(sec_node, "SecretExposure", {"type": sec.secret_type, "state": sec.state.name, "path": sec.path, "env": sec.environment_variable})
+
+    for mal in malware:
+        mal_node = f"N_MAL_{mal.indicator_id}"
+        add_node(mal_node, "MalwareIndicator", {"type": mal.indicator_type, "state": mal.state.name, "family": mal.family})
+
+    for v in vulnerabilities:
+        vuln_node = f"N_VULN_{v.vulnerability_id}"
+        add_node(vuln_node, "Vulnerability", {"cve": v.cve, "package": v.package_name, "version": v.package_version, "state": v.state.name})
+
+    for wl in workloads:
+        wl_node = f"N_WORKLOAD_{wl.workload_id}"
+        add_node(wl_node, "KubernetesWorkload", {"kind": wl.kind, "namespace": wl.namespace, "image_digest": wl.image_digest})
+        if wl.image_digest:
+            add_node(f"N_IMAGE_{wl.image_digest}", "Image", {"digest": wl.image_digest})
+            add_edge(wl_node, f"N_IMAGE_{wl.image_digest}", "DEPLOYED_AS", wl.confidence, wl.evidence_ids)
+
+    for dep in deployments:
+        dep_node = f"N_DEP_{dep.deployment_id}"
+        add_node(dep_node, "DeploymentDigest", {"approved": dep.approved_digest, "observed": dep.observed_digest, "tag": dep.tag})
+        if dep.observed_digest:
+            add_node(f"N_IMAGE_{dep.observed_digest}", "Image", {"digest": dep.observed_digest})
+            add_edge(dep_node, f"N_IMAGE_{dep.observed_digest}", "RUNS_IN", dep.confidence, dep.evidence_ids)
+
+    for d in drift_findings:
+        drift_node = f"N_DRIFT_{d.drift_id}"
+        add_node(drift_node, "DriftFinding", {"type": d.drift_type.name, "expected": d.expected, "observed": d.observed})
+
+    for f in facts:
+        fact_node = f"N_FACT_{f.fact_id}"
+        add_node(fact_node, "Fact", {"statement": f.statement, "state": f.verification_state.name, "claim_type": f.claim_type})
+
+    for h in hypotheses:
+        hyp_node = f"N_HYP_{h.id}"
+        add_node(hyp_node, "Hypothesis", {"description": h.description, "status": h.status.name})
+
+    for c in contradictions:
+        contra_node = f"N_CONTRA_{c.contradiction_id}"
+        add_node(contra_node, "Contradiction", {"type": c.contradiction_type, "description": c.description, "severity": c.severity})
+
+    for g in gaps:
+        gap_node = f"N_GAP_{g.gap_id}"
+        add_node(gap_node, "Gap", {"description": g.description, "importance": g.importance, "specialist": g.specialist})
+
+    return {
+        "nodes": [asdict(n) for n in nodes.values()],
+        "edges": [asdict(e) for e in edges],
+    }
+
+
+def generate_analyst_summary(
+    registries: List[RegistryObject],
+    repositories: List[RepositoryObject],
+    image_references: List[ImageReferenceObject],
+    tag_history: List[TagHistoryEntry],
+    manifests: List[ManifestObject],
+    platforms: List[PlatformVariant],
+    configs: List[ImageConfigObject],
+    layers: List[LayerObject],
+    packages: List[PackageObject],
+    sbom_validation: Optional[SbomValidation],
+    signatures: List[SignatureObject],
+    provenance: List[ProvenanceObject],
+    secrets: List[SecretExposure],
+    malware: List[MalwareIndicator],
+    vulnerabilities: List[VulnerabilityCandidate],
+    drift_findings: List[DriftFinding],
+    hardening: Dict[str, Any],
+    policy_compliance: Dict[str, Any],
+    contradictions: List[Contradiction],
+    gaps: List[Gap],
+) -> str:
+    lines: List[str] = []
+
+    lines.append("=== CONTAINERINT REQUIRED ANALYST SUMMARY ===")
+
+    lines.append("IMAGE:")
+    for ref in image_references:
+        lines.append(f"- {ref.original_reference} -> digest={ref.digest}, tag={ref.tag}")
+
+    lines.append("")
+    lines.append("REGISTRY:")
+    for reg in registries:
+        lines.append(f"- {reg.registry_id}: hostname={reg.hostname}, type={reg.registry_type.name}")
+
+    lines.append("")
+    lines.append("REPOSITORY:")
+    for repo in repositories:
+        lines.append(f"- {repo.registry_id}/{repo.repository_name}: namespace={repo.namespace}, visibility={repo.visibility}")
+
+    lines.append("")
+    lines.append("TAG / DIGEST RESOLUTION:")
+    for ref in image_references:
+        if ref.digest:
+            lines.append(f"- Immutable digest resolved: {ref.digest}")
+        else:
+            lines.append(f"- Mutable tag reference: {ref.tag or ref.original_reference}")
+
+    lines.append("")
+    lines.append("TAG HISTORY:")
+    by_tag: Dict[str, Set[str]] = defaultdict(set)
+    for th in tag_history:
+        by_tag[th.tag].add(th.digest)
+    for tag, digests in by_tag.items():
+        lines.append(f"- {tag}: {', '.join(sorted(digests))}")
+
+    lines.append("")
+    lines.append("PLATFORM:")
+    for p in platforms:
+        lines.append(f"- {p.os}/{p.architecture}{('/' + p.variant) if p.variant else ''}: manifest={p.manifest_digest}")
+
+    lines.append("")
+    lines.append("MANIFEST:")
+    for m in manifests:
+        lines.append(f"- digest={m.manifest_digest}, media_type={m.media_type}, layers={len(m.layer_digests)}")
+
+    lines.append("")
+    lines.append("BASE IMAGE / LINEAGE:")
+    base, base_state, _ = resolve_base_image(provenance, configs, layers, image_references[0].digest if image_references else None)
+    lines.append(f"- Base image candidate: {base or 'unknown'} ({base_state.name})")
+
+    lines.append("")
+    lines.append("LAYERS:")
+    for layer in layers:
+        lines.append(f"- layer {layer.layer_index}: digest={layer.digest}, whiteouts={len(layer.whiteouts)}")
+
+    lines.append("")
+    lines.append("PACKAGE / COMPONENT INVENTORY:")
+    for p in packages[:20]:
+        lines.append(f"- {p.name} {p.version or ''} ({p.ecosystem or 'unknown'}) purl={p.purl or 'n/a'}")
+
+    lines.append("")
+    lines.append("SBOM STATUS:")
+    if sbom_validation:
+        lines.append(f"- State: {sbom_validation.state.name}")
+        lines.append(f"- Explanation: {sbom_validation.explanation}")
+        if sbom_validation.missing_in_sbom:
+            lines.append(f"- Missing in SBOM: {', '.join(sbom_validation.missing_in_sbom[:10])}")
+        if sbom_validation.extra_in_sbom:
+            lines.append(f"- Extra in SBOM: {', '.join(sbom_validation.extra_in_sbom[:10])}")
+        if sbom_validation.version_conflicts:
+            lines.append(f"- Version conflicts: {len(sbom_validation.version_conflicts)}")
+    else:
+        lines.append("- No SBOM supplied.")
+
+    lines.append("")
+    lines.append("VEX STATUS:")
+    lines.append(f"- VEX-adjusted vulnerability candidates: {sum(1 for v in vulnerabilities if v.state in (VulnerabilityState.NOT_AFFECTED_PER_VEX, VulnerabilityState.FIXED_PER_VEX, VulnerabilityState.UNDER_INVESTIGATION))}")
+
+    lines.append("")
+    lines.append("SIGNATURE STATUS:")
+    for sig in signatures:
+        lines.append(f"- digest={sig.digest_covered}: {sig.state.name}, signer={sig.signer_identity_claim}")
+
+    lines.append("")
+    lines.append("PROVENANCE STATUS:")
+    for prov in provenance:
+        lines.append(f"- digest={prov.artifact_digest}: {prov.state.name}, repo={prov.source_repository}, commit={prov.commit}")
+
+    lines.append("")
+    lines.append("BUILD SOURCE:")
+    supported = [p for p in provenance if p.state in (ProvenanceState.VERIFIED_BUILD_SOURCE, ProvenanceState.SUPPORTED_BUILD_SOURCE)]
+    lines.append(f"- Supported build-source digests: {', '.join(p.artifact_digest or 'unknown' for p in supported) if supported else 'none'}")
+
+    lines.append("")
+    lines.append("ENTRYPOINT / CMD / USER:")
+    for cfg in configs:
+        lines.append(f"- entrypoint={cfg.entrypoint}, cmd={cfg.cmd}, user={cfg.user}")
+
+    lines.append("")
+    lines.append("SECRET EXPOSURE:")
+    if secrets:
+        for sec in secrets:
+            lines.append(f"- {sec.secret_type}: state={sec.state.name}, path={sec.path}, env={sec.environment_variable}, fingerprint={sec.fingerprint}")
+    else:
+        lines.append("- None detected from supplied authorized static evidence.")
+    lines.append("- Raw secrets redacted. Validity not tested. Hand off to CREDINT.")
+
+    lines.append("")
+    lines.append("MALWARE INDICATORS:")
+    if malware:
+        for mal in malware:
+            lines.append(f"- {mal.indicator_type}: state={mal.state.name}, value={mal.value}, family={mal.family}")
+    else:
+        lines.append("- No malware indicator match from supplied authorized static evidence.")
+    lines.append("- Do not execute image/binary. Hand off to MALINT if consequential.")
+
+    lines.append("")
+    lines.append("VULNERABILITY CONTEXT:")
+    for v in vulnerabilities[:20]:
+        lines.append(f"- {v.cve or v.vulnerability_id}: {v.package_name} {v.package_version}, state={v.state.name}, severity={v.severity}, KEV={v.kev}")
+    lines.append("- Package presence is not vulnerability applicability. Hand off to VULNINT.")
+
+    lines.append("")
+    lines.append("RUNTIME / DEPLOYMENT CONTEXT:")
+    for d in drift_findings:
+        lines.append(f"- {d.drift_type.name}: object={d.object_id}, expected={d.expected}, observed={d.observed}")
+
+    lines.append("")
+    lines.append("HARDENING CONTEXT:")
+    lines.append(f"- State: {hardening.get('state')}")
+    for obs in hardening.get("observations", []):
+        lines.append(f"- {obs}")
+
+    lines.append("")
+    lines.append("POLICY COMPLIANCE:")
+    lines.append(f"- State: {policy_compliance.get('state')}")
+    for check in policy_compliance.get("checks", [])[:20]:
+        lines.append(f"- {check.get('check')}: passed={check.get('passed')}")
+
+    lines.append("")
+    lines.append("CONTRADICTIONS:")
+    if contradictions:
+        for c in contradictions:
+            lines.append(f"- {c.contradiction_type}: {c.description} [{c.severity}]")
+    else:
+        lines.append("- None detected.")
+
+    lines.append("")
+    lines.append("UNKNOWN:")
+    lines.append("- Vulnerability applicability/reachability.")
+    lines.append("- Secret validity.")
+    lines.append("- Malware family/behavior.")
+    lines.append("- Threat actor/campaign attribution.")
+    lines.append("- Whether deployment drift was authorized.")
+
+    lines.append("")
+    lines.append("NEXT ACTION:")
+    lines.append("- Resolve immutable digest and platform-specific manifest.")
+    lines.append("- Validate layer digests and reconstruct filesystem safely.")
+    lines.append("- Regenerate/compare SBOM for exact digest/platform.")
+    lines.append("- Verify signature and provenance for deployed digest.")
+    lines.append("- Hand vulnerability candidates to VULNINT.")
+    lines.append("- Hand secret exposures to CREDINT without using secrets.")
+    lines.append("- Hand suspicious binaries to MALINT without execution.")
+    lines.append("- Review deployment drift against change/release authorization.")
+    lines.append("- Require human review before blocking/removing production images or attributing supply-chain compromise.")
+
+    return "\n".join(lines)
+
+
+# ==============================================================================
+# MAIN ENGINE: CONTAINERINT AI EMPLOYEE
+# ==============================================================================
+
+class ContainerIntEmployee:
+    """
+    Defensive CONTAINERINT employee.
+
+    Consumes authorized container/image/registry/SBOM/provenance/runtime evidence representations.
+    Does not access unauthorized registries, push/delete/tamper images, exploit containers,
+    escape containers, execute unknown images/binaries, or use discovered secrets.
+    """
+
+    def __init__(self, model_mode: str = "LOCAL_ONLY"):
+        self.model_mode = model_mode.upper()
+        logger.info("CONTAINERINT employee initialized in mode=%s", self.model_mode)
+
+    def process_case(
+        self,
+        case_id: str,
+        task_id: str,
+        objective: str,
+        scope: Dict[str, Any],
+        evidence_input: Dict[str, Any],
+        known_facts: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        known_facts = known_facts or {}
+        now = datetime.now(timezone.utc)
+
+        try:
+            enforce_policy(objective, scope)
+        except PolicyViolation as exc:
+            return {
+                "case_id": case_id,
+                "task_id": task_id,
+                "objective": objective,
+                "status": "POLICY_BLOCKED",
+                "error": str(exc),
+                "privacy_flags": [
+                    "AUTHORIZED_REGISTRY_ONLY",
+                    "STATIC_FIRST_DEFAULT",
+                    "NO_IMAGE_EXECUTION",
+                    "NO_SECRET_USE",
+                    "NO_REGISTRY_TAMPERING",
+                    "NO_CONTAINER_EXPLOITATION",
+                ],
+            }
+
+        logger.info("Starting CONTAINERINT case=%s task=%s", case_id, task_id)
+
+        evidences: List[EvidenceRef] = []
+
+        registries = parse_registries(evidence_input.get("registries", []) or [], case_id, now, evidences)
+        repositories = parse_repositories(evidence_input.get("repositories", []) or [], case_id, now, evidences)
+        image_references = parse_image_references(evidence_input.get("image_references", []) or [], case_id, now, evidences)
+        tag_history = parse_tag_history(evidence_input.get("tag_history", []) or [], case_id, now, evidences)
+        platforms = parse_platform_variants(evidence_input.get("platform_variants", []) or [], case_id, now, evidences)
+        manifests = parse_manifests(evidence_input.get("manifests", []) or [], case_id, now, evidences, platforms)
+        configs = parse_image_configs(evidence_input.get("image_configs", []) or [], case_id, now, evidences)
+        layers = parse_layers(evidence_input.get("layers", []) or [], case_id, now, evidences)
+        filesystem_artifacts = parse_filesystem_artifacts(evidence_input.get("filesystem_artifacts", []) or [], case_id, now, evidences)
+        packages = parse_packages(evidence_input.get("packages", []) or [], case_id, now, evidences)
+        binaries = parse_binaries(evidence_input.get("binaries", []) or [], case_id, now, evidences)
+        sboms = parse_sboms(evidence_input.get("sboms", []) or [], case_id, now, evidences)
+        vex_records = parse_vex_records(evidence_input.get("vex_records", []) or [], case_id, now, evidences)
+        signatures = parse_signatures(evidence_input.get("signatures", []) or [], case_id, now, evidences)
+        attestations = parse_attestations(evidence_input.get("attestations", []) or [], case_id, now, evidences)
+        provenance = parse_provenance(evidence_input.get("provenance", []) or [], case_id, now, evidences)
+        build_sources = resolve_build_sources(provenance, evidence_input.get("build_metadata", []) or [], case_id, now, evidences)
+        runtime_instances = parse_runtime_instances(evidence_input.get("runtime_instances", []) or [], case_id, now, evidences)
+        workloads = parse_kubernetes_workloads(evidence_input.get("kubernetes_workloads", []) or [], case_id, now, evidences)
+        cloud_context = parse_cloud_context(evidence_input.get("cloud_context", []) or [], case_id, now, evidences)
+        deployment_digests = parse_deployment_digests(evidence_input.get("deployment_digests", []) or [], case_id, now, evidences)
+
+        primary_image_reference = image_references[0] if image_references else None
+        primary_digest = primary_image_reference.digest if primary_image_reference else None
+
+        # If digest missing, try latest tag history.
+        if not primary_digest and tag_history:
+            latest = max(tag_history, key=lambda x: x.observed_at or datetime.min.replace(tzinfo=timezone.utc))
+            primary_digest = latest.digest
+
+        base_image, base_state, base_evidence_ids = resolve_base_image(provenance, configs, layers, primary_digest)
+
+        sbom_validation = validate_sbom_against_image(
+            sboms[0] if sboms else None,
+            packages,
+            binaries,
+            primary_image_reference,
+            now,
+        )
+
+        secrets = scan_secret_exposures(configs, filesystem_artifacts, layers, case_id, now, evidences)
+        malware = scan_malware_indicators(
+            evidence_input.get("malware_intel", []) or [],
+            packages,
+            binaries,
+            filesystem_artifacts,
+            case_id,
+            now,
+            evidences,
+        )
+        vulnerabilities = map_vulnerability_candidates(
+            packages,
+            evidence_input.get("vulnerability_data", []) or [],
+            vex_records,
+            case_id,
+            now,
+            evidences,
+        )
+
+        drift_findings = compute_drift_findings(
+            image_references=image_references,
+            tag_history=tag_history,
+            deployment_digests=deployment_digests,
+            runtime_instances=runtime_instances,
+            workloads=workloads,
+            policy=evidence_input.get("policy", {}) or {},
+        )
+
+        hardening = assess_hardening(configs, workloads, runtime_instances)
+        policy_compliance = evaluate_policy_compliance(
+            policy=evidence_input.get("policy", {}) or {},
+            registries=registries,
+            image_references=image_references,
+            signatures=signatures,
+            sbom_validation=sbom_validation,
+            configs=configs,
+            vulnerabilities=vulnerabilities,
+            drift_findings=drift_findings,
+        )
+
+        contradictions = detect_contradictions(
+            image_references=image_references,
+            tag_history=tag_history,
+            deployment_digests=deployment_digests,
+            signatures=signatures,
+            provenance=provenance,
+            sbom_validation=sbom_validation,
+            packages=packages,
+            vulnerabilities=vulnerabilities,
+            drift_findings=drift_findings,
+            secrets=secrets,
+        )
+
+        hypotheses = build_hypotheses(
+            image_references=image_references,
+            deployment_digests=deployment_digests,
+            drift_findings=drift_findings,
+            signatures=signatures,
+            provenance=provenance,
+            sbom_validation=sbom_validation,
+            secrets=secrets,
+            malware=malware,
+            vulnerabilities=vulnerabilities,
+            hardening=hardening,
+            contradictions=contradictions,
+            known_facts=known_facts,
+        )
+
+        skeptic = independent_skeptic_review(
+            drift_findings=drift_findings,
+            signatures=signatures,
+            provenance=provenance,
+            sbom_validation=sbom_validation,
+            secrets=secrets,
+            malware=malware,
+            vulnerabilities=vulnerabilities,
+            contradictions=contradictions,
+            hardening=hardening,
+            known_facts=known_facts,
+        )
+
+        facts = build_facts(
+            image_references=image_references,
+            manifests=manifests,
+            layers=layers,
+            packages=packages,
+            sbom_validation=sbom_validation,
+            signatures=signatures,
+            provenance=provenance,
+            secrets=secrets,
+            malware=malware,
+            vulnerabilities=vulnerabilities,
+            drift_findings=drift_findings,
+            hardening=hardening,
+            policy_compliance=policy_compliance,
+            contradictions=contradictions,
+        )
+
+        gaps = build_knowledge_gaps(
+            image_references=image_references,
+            manifests=manifests,
+            packages=packages,
+            sbom_validation=sbom_validation,
+            signatures=signatures,
+            provenance=provenance,
+            deployment_digests=deployment_digests,
+            vulnerabilities=vulnerabilities,
+            secrets=secrets,
+            malware=malware,
+            contradictions=contradictions,
+        )
+
+        graph = build_graphical_memory(
+            registries=registries,
+            repositories=repositories,
+            image_references=image_references,
+            tag_history=tag_history,
+            manifests=manifests,
+            platforms=platforms,
+            configs=configs,
+            layers=layers,
+            packages=packages,
+            binaries=binaries,
+            sboms=sboms,
+            sbom_validation=sbom_validation,
+            signatures=signatures,
+            provenance=provenance,
+            secrets=secrets,
+            malware=malware,
+            vulnerabilities=vulnerabilities,
+            workloads=workloads,
+            deployments=deployment_digests,
+            drift_findings=drift_findings,
+            facts=facts,
+            hypotheses=hypotheses,
+            contradictions=contradictions,
+            gaps=gaps,
+        )
+
+        analyst_summary = generate_analyst_summary(
+            registries=registries,
+            repositories=repositories,
+            image_references=image_references,
+            tag_history=tag_history,
+            manifests=manifests,
+            platforms=platforms,
+            configs=configs,
+            layers=layers,
+            packages=packages,
+            sbom_validation=sbom_validation,
+            signatures=signatures,
+            provenance=provenance,
+            secrets=secrets,
+            malware=malware,
+            vulnerabilities=vulnerabilities,
+            drift_findings=drift_findings,
+            hardening=hardening,
+            policy_compliance=policy_compliance,
+            contradictions=contradictions,
+            gaps=gaps,
+        )
+
+        recommended_next_actions = [
+            {
+                "action": "Resolve immutable digest and platform-specific manifest before making image identity claims.",
+                "reason": "Tags are mutable; digest identifies artifact content.",
+                "specialist": "CONTAINERINT",
+                "privacy": "AUTHORIZED_REGISTRY_ONLY",
+            },
+            {
+                "action": "Validate layer digests and reconstruct filesystem safely with whiteout processing.",
+                "reason": "Final filesystem state is not a simple union of layer file lists.",
+                "specialist": "CONTAINERINT",
+                "privacy": "AUTHORIZED_ONLY",
+            },
+            {
+                "action": "Regenerate or obtain SBOM for exact image digest/platform and compare against filesystem inventory.",
+                "reason": "SBOM may be stale, source-based, architecture-specific, or incomplete.",
+                "specialist": "CONTAINERINT / PACKAGEINT",
+                "privacy": "AUTHORIZED_ONLY",
+            },
+            {
+                "action": "Verify signature and provenance specifically for the deployed digest.",
+                "reason": "Signature/provenance for an approved digest does not prove an observed different digest.",
+                "specialist": "CONTAINERINT / CERTINT / SUPPLYCHAININT",
+                "privacy": "AUTHORIZED_ONLY",
+            },
+            {
+                "action": "Hand vulnerability candidates to VULNINT for applicability, reachability, backport, and exploitation context.",
+                "reason": "Package presence and CVE match do not establish exploitable container.",
+                "specialist": "VULNINT",
+                "privacy": "AUTHORIZED_ONLY",
+            },
+            {
+                "action": "Hand secret exposures to CREDINT without using, testing, or exposing raw secrets.",
+                "reason": "CONTAINERINT detects and redacts; credential handling requires authorized workflow.",
+                "specialist": "CREDINT",
+                "privacy": "RESTRICTED",
+            },
+            {
+                "action": "Hand suspicious binaries/artifacts to MALINT without executing unknown content.",
+                "reason": "Malware confirmation requires safe static/dynamic analysis.",
+                "specialist": "MALINT",
+                "privacy": "AUTHORIZED_SANDBOX_ONLY",
+            },
+            {
+                "action": "Review deployment drift against release/change authorization and registry audit records.",
+                "reason": "Tag/digest drift may be normal CI/CD, mirror behavior, stale inventory, or unauthorized change.",
+                "specialist": "CONTAINERINT / CLOUDINT / INCIDENTINT",
+                "privacy": "AUTHORIZED_ONLY",
+            },
+            {
+                "action": "Do not push, delete, retag, tamper with manifests, exploit containers, escape containers, or use discovered secrets.",
+                "reason": "CONTAINERINT boundary is defensive intelligence.",
+                "specialist": "GOVERNANCE / HUMAN_REVIEW",
+                "privacy": "POLICY_BOUNDARY",
+            },
+        ]
+
+        specialist_handoffs = [
+            {"specialist": "VULNINT", "reason": "Vulnerability applicability, reachability, backports, exploitation context."},
+            {"specialist": "PACKAGEINT", "reason": "Package ecosystem identity, version history, dependency relationships."},
+            {"specialist": "REPOINT", "reason": "Source repository/commit/release correlation where build provenance supports it."},
+            {"specialist": "SUPPLYCHAININT", "reason": "Broader organizational/software supply-chain dependency analysis."},
+            {"specialist": "MALINT", "reason": "Malware family, capabilities, behavior, safe sandbox analysis."},
+            {"specialist": "CREDINT", "reason": "Secret/credential exposure handling without credential use."},
+            {"specialist": "CLOUDINT", "reason": "Cloud registry, managed container service, IAM, and workload context."},
+            {"specialist": "INFRAINT", "reason": "Registry/network infrastructure context."},
+            {"specialist": "NETINT", "reason": "Runtime network behavior if authorized telemetry exists."},
+            {"specialist": "CERTINT", "reason": "Certificate/signature/transparency-log verification."},
+            {"specialist": "INCIDENTINT", "reason": "Incident sequence, impact, containment, response."},
+            {"specialist": "LOGINT", "reason": "Registry/build/runtime log normalization and retention context."},
+            {"specialist": "LEGALINT", "reason": "License/legal interpretation where SBOM identifies licensing concerns."},
+        ]
+
+        privacy_flags = [
+            "AUTHORIZED_REGISTRY_ONLY",
+            "STATIC_FIRST_DEFAULT",
+            "NO_RAW_SECRET_EXPOSURE",
+            "NO_SECRET_VALIDITY_TESTING",
+            "NO_UNKNOWN_IMAGE_EXECUTION",
+            "NO_UNKNOWN_BINARY_EXECUTION",
+            "NO_REGISTRY_TAMPERING",
+            "NO_CONTAINER_EXPLOITATION",
+            "NO_KUBERNETES_EXPLOITATION",
+        ]
+
+        limitations = [
+            "CONTAINERINT analyzes supplied authorized container/image/registry evidence representations only.",
+            "It does not brute-force registries, bypass authentication, push/delete/tamper images, exploit containers, escape containers, or execute unknown images/binaries.",
+            "Tag does not equal image identity.",
+            "Manifest digest is not layer digest or file hash.",
+            "Package presence does not prove execution or vulnerability applicability.",
+            "SBOM may be stale, incomplete, architecture-specific, or generated from source rather than final image.",
+            "Signature proves integrity/signer relationship, not safety.",
+            "Provenance proves build relationship, not benign source code.",
+            "Deployment drift may be authorized CI/CD, mirror behavior, stale inventory, or unauthorized change.",
+            "Runtime drift may be operational noise or compromise; requires forensic/incident context.",
+        ]
+
+        status = "COMPLETED" if image_references or manifests or packages else "INSUFFICIENT_DATA"
+
+        result: Dict[str, Any] = {
+            "case_id": case_id,
+            "task_id": task_id,
+            "objective": objective,
+            "status": status,
+            "model_mode": self.model_mode,
+            "questions": scope.get("questions", []),
+            "authorized_scope": scope,
+            "source_ids": sorted({ev.source_id for ev in evidences}),
+            "evidence_ids": sorted({ev.evidence_id for ev in evidences}),
+            "registries": [asdict(r) for r in registries],
+            "repositories": [asdict(r) for r in repositories],
+            "image_references": [asdict(r) for r in image_references],
+            "tags": sorted({r.tag for r in image_references if r.tag}),
+            "digests": sorted({r.digest for r in image_references if r.digest}),
+            "tag_history": [asdict(t) for t in tag_history],
+            "image_indexes": [],
+            "manifests": [asdict(m) for m in manifests],
+            "platform_variants": [asdict(p) for p in platforms],
+            "image_configs": [asdict(c) for c in configs],
+            "layers": [asdict(l) for l in layers],
+            "filesystem_artifacts": [asdict(f) for f in filesystem_artifacts],
+            "binaries": [asdict(b) for b in binaries],
+            "base_images": [
+                {
+                    "image_digest": primary_digest,
+                    "base_image": base_image,
+                    "state": base_state.name,
+                    "evidence_ids": base_evidence_ids,
+                    "limitations": [
+                        "Base-image resolution may be broken by multi-stage builds, squashing, distroless, or rebasing.",
+                    ],
+                }
+            ],
+            "image_lineage": [
+                {
+                    "image_digest": primary_digest,
+                    "base_image": base_image,
+                    "state": base_state.name,
+                    "evidence_ids": base_evidence_ids,
+                }
+            ],
+            "image_ancestry": [
+                {
+                    "image_digest": primary_digest,
+                    "parent_or_base_candidates": [base_image] if base_image else [],
+                    "state": base_state.name,
+                }
+            ],
+            "image_diffs": [],
+            "layer_diffs": [],
+            "os_packages": [asdict(p) for p in packages if p.ecosystem in {"deb", "rpm", "apk", "os", "operating_system"}],
+            "language_packages": [asdict(p) for p in packages if p.ecosystem not in {"deb", "rpm", "apk", "os", "operating_system", None}],
+            "components": [asdict(p) for p in packages],
+            "purls": sorted({p.purl for p in packages if p.purl}),
+            "cpes": sorted({p.cpe for p in packages if p.cpe}),
+            "sboms": [asdict(s) for s in sboms],
+            "sbom_validation": asdict(sbom_validation) if sbom_validation else None,
+            "sbom_diffs": [
+                {
+                    "missing_in_sbom": sbom_validation.missing_in_sbom,
+                    "extra_in_sbom": sbom_validation.extra_in_sbom,
+                    "version_conflicts": sbom_validation.version_conflicts,
+                }
+            ] if sbom_validation else [],
+            "vex_records": [asdict(v) for v in vex_records],
+            "signatures": [asdict(s) for s in signatures],
+            "signature_verification": {
+                s.signature_id: {
+                    "digest_covered": s.digest_covered,
+                    "state": s.state.name,
+                    "verification_result": s.verification_result,
+                    "policy": s.policy,
+                }
+                for s in signatures
+            },
+            "signers": sorted({s.signer_identity_claim for s in signatures if s.signer_identity_claim}),
+            "attestations": [asdict(a) for a in attestations],
+            "provenance": [asdict(p) for p in provenance],
+            "build_sources": [asdict(b) for b in build_sources],
+            "commits": sorted({p.commit for p in provenance if p.commit}),
+            "build_pipelines": sorted({b.pipeline for b in build_sources if b.pipeline}),
+            "entrypoints": [c.entrypoint for c in configs],
+            "cmds": [c.cmd for c in configs],
+            "configured_users": sorted({c.user for c in configs if c.user}),
+            "environment_metadata": {
+                c.evidence_ids[0] if c.evidence_ids else f"CFG_{idx}": {
+                    k: ("[REDACTED]" if is_sensitive_env_key(k) else v)
+                    for k, v in c.environment.items()
+                }
+                for idx, c in enumerate(configs)
+            },
+            "exposed_ports": sorted({p for c in configs for p in c.exposed_ports}),
+            "volumes": sorted({v for c in configs for v in c.volumes}),
+            "secret_exposures": [asdict(s) for s in secrets],
+            "malware_indicators": [asdict(m) for m in malware],
+            "vulnerability_candidates": [asdict(v) for v in vulnerabilities],
+            "vulnerability_context": {
+                "note": "Vulnerability candidates are context only. Applicability/reachability/exploitability requires VULNINT.",
+                "candidates": len(vulnerabilities),
+                "kev_candidates": sum(1 for v in vulnerabilities if v.kev),
+                "vex_adjusted": sum(
+                    1
+                    for v in vulnerabilities
+                    if v.state in (VulnerabilityState.NOT_AFFECTED_PER_VEX, VulnerabilityState.FIXED_PER_VEX, VulnerabilityState.UNDER_INVESTIGATION)
+                ),
+            },
+            "container_instances": [asdict(i) for i in runtime_instances],
+            "kubernetes_workloads": [asdict(w) for w in workloads],
+            "cloud_context": [asdict(c) for c in cloud_context],
+            "deployment_digests": [asdict(d) for d in deployment_digests],
+            "deployment_drift": [asdict(d) for d in drift_findings if d.drift_type == DeploymentDriftType.DEPLOYMENT_DRIFT],
+            "runtime_drift": [asdict(d) for d in drift_findings if d.drift_type == DeploymentDriftType.RUNTIME_FILESYSTEM_DRIFT],
+            "policy_compliance": policy_compliance,
+            "hardening_context": hardening,
+            "timeline_updates": [
+                {
+                    "timestamp": th.observed_at or th.valid_from,
+                    "type": "TAG_HISTORY",
+                    "object_id": th.entry_id,
+                    "description": f"Tag {th.tag} pointed to {th.digest}",
+                }
+                for th in tag_history
+            ] + [
+                {
+                    "timestamp": dep.observed_at,
+                    "type": "DEPLOYMENT_OBSERVED",
+                    "object_id": dep.deployment_id,
+                    "description": f"Observed digest {dep.observed_digest}",
+                }
+                for dep in deployment_digests
+            ],
+            "observations": [asdict(ev) for ev in evidences],
+            "candidate_facts": [asdict(f) for f in facts if f.verification_state == VerificationState.INCONCLUSIVE],
+            "supported_facts": [asdict(f) for f in facts if f.verification_state == VerificationState.SUPPORTED],
+            "partial_facts": [asdict(f) for f in facts if f.verification_state == VerificationState.PARTIALLY_SUPPORTED],
+            "disputed_facts": [asdict(f) for f in facts if f.verification_state in (VerificationState.DISPUTED, VerificationState.UNSUPPORTED)],
+            "source_reliability": {
+                ev.source_id: {
+                    "source_type": ev.source_type,
+                    "reliability": ev.reliability,
+                    "upstream_source_id": ev.upstream_source_id,
+                }
+                for ev in evidences
+            },
+            "source_bias": [
+                "Scanner/SBOM tools may miss statically linked libraries, distroless components, or language vendored dependencies.",
+                "Registry retention may hide historical tag/digest mappings.",
+                "Runtime inventory may lag deployment rollout.",
+                "Vulnerability feeds may lack distro backport context.",
+                "Multi-architecture images may have different packages/vulnerabilities per platform.",
+            ],
+            "source_limitations": [
+                "No unauthorized registry access.",
+                "No image execution by default.",
+                "No secret use/testing.",
+                "No vulnerability applicability adjudication.",
+            ],
+            "source_pedigree": {
+                ev.evidence_id: {
+                    "source_id": ev.source_id,
+                    "upstream_source_id": ev.upstream_source_id,
+                    "source_type": ev.source_type,
+                    "observed_at": ev.observed_at,
+                }
+                for ev in evidences
+            },
+            "source_independence": {
+                "state": SourceIndependenceState.UNKNOWN.name,
+                "note": "Full source independence requires upstream feed/parser provenance across scanner, SBOM, registry, runtime, and vulnerability sources.",
+                "unique_upstream_families": sorted({ev.upstream_source_id for ev in evidences}),
+            },
+            "contradictions": [asdict(c) for c in contradictions],
+            "hypotheses": [asdict(h) for h in hypotheses],
+            "falsification_results": {
+                "questions": [
+                    "Could tag have legitimately moved?",
+                    "Could SBOM correspond to another architecture/build?",
+                    "Could vulnerable package be build-only?",
+                    "Could distro backport invalidate naive version check?",
+                    "Could secret exist only in historical layer?",
+                    "Could scanner findings derive from same upstream source?",
+                    "Could running workload use different digest?",
+                    "Could suspicious binary belong to legitimate package?",
+                ],
+                "skeptic_review": skeptic,
+            },
+            "privacy_flags": privacy_flags,
+            "unknowns": [
+                "Vulnerability applicability/reachability.",
+                "Secret validity.",
+                "Malware family/behavior.",
+                "Threat actor/campaign attribution.",
+                "Whether deployment drift was authorized.",
+                "Whether runtime drift is operational or malicious.",
+            ],
+            "knowledge_gaps": [asdict(g) for g in gaps],
+            "recommended_next_actions": recommended_next_actions,
+            "specialist_handoffs": specialist_handoffs,
+            "limitations": limitations,
+            "analyst_summary": analyst_summary,
+            "graphical_memory": graph,
+            "replay_manifest": {
+                "case_id": case_id,
+                "task_id": task_id,
+                "model_mode": self.model_mode,
+                "generated_at": now.isoformat(),
+                "evidence_ids": sorted({ev.evidence_id for ev in evidences}),
+                "image_references": [asdict(r) for r in image_references],
+                "resolved_digest": primary_digest,
+                "platform_variants": [asdict(p) for p in platforms],
+                "manifests": [asdict(m) for m in manifests],
+                "layer_digests": [l.digest for l in layers],
+                "filesystem_reconstruction_version": "containerint-static-1.0",
+                "whiteout_processing": "represented via filesystem_artifacts.current_present/deleted_in_layer where supplied",
+                "package_parser_versions": sorted({p.source or "unknown" for p in packages}),
+                "sbom_version": sboms[0].version if sboms else None,
+                "sbom_hash": sboms[0].hash if sboms else None,
+                "vex_versions": [v.vex_id for v in vex_records],
+                "signature_verification_policy": [s.policy for s in signatures],
+                "provenance": [asdict(p) for p in provenance],
+                "base_image_decision": {
+                    "base_image": base_image,
+                    "state": base_state.name,
+                    "evidence_ids": base_evidence_ids,
+                },
+                "vulnerability_data_version": sorted({v.source or "unknown" for v in vulnerabilities}),
+                "deployment_inventory_snapshot": [asdict(d) for d in deployment_digests],
+                "drift_comparison": [asdict(d) for d in drift_findings],
+                "secret_redaction_operations": "raw secrets replaced with [REDACTED] and sha256 fingerprint",
+                "source_independence_result": "partial/upstream-family tracking only",
+                "fact_gate": [asdict(f) for f in facts],
+                "contradictions": [asdict(c) for c in contradictions],
+                "hypotheses": [asdict(h) for h in hypotheses],
+                "skeptic_review": skeptic,
+            },
+        }
+
+        logger.info(
+            "CONTAINERINT case completed. images=%s packages=%s vuln_candidates=%s secrets=%s drift=%s",
+            len(image_references),
+            len(packages),
+            len(vulnerabilities),
+            len(secrets),
+            len(drift_findings),
+        )
+
+        return result
+
+
+# ==============================================================================
+# EXAMPLE EXECUTION
+# ==============================================================================
+

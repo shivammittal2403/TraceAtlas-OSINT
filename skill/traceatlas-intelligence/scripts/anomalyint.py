@@ -1,0 +1,2727 @@
+#!/usr/bin/env python3
+"""
+TRACEATLAS ANOMALYINT — Safe Python Starter Implementation
+
+Purpose:
+  Evidence-first cross-domain anomaly detection, explanation, and defensive triage.
+
+Hard boundaries enforced in code:
+  - Does NOT autonomously accuse, convict, punish, terminate, suspend, freeze, block, or blacklist.
+  - Does NOT infer guilt, criminality, fraud verdict, malware verdict, or incident verdict from anomaly score.
+  - Does NOT infer sensitive traits: religion, ethnicity, race, political belief, sexual orientation, health, mental health.
+  - Does NOT perform unauthorized surveillance, biometric identification, or private-person tracking.
+  - Does NOT generate attack paths, chokepoints, sabotage plans, or detection-evasion guidance.
+  - Treats anomaly as deviation, not malice.
+  - Treats model score as analytical signal, not fact.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import re
+import sys
+import unicodedata
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+VERSION = "0.1.0-anomalyint-safe-starter"
+FAR_FUTURE = datetime(9999, 12, 31, tzinfo=timezone.utc)
+
+# --------------------------------------------------------------------
+# Policy / privacy constants
+# --------------------------------------------------------------------
+
+ALLOWED_SCOPES = {
+    "public_and_authorized_records",
+    "authorized_case_evidence",
+    "authorized_enterprise_telemetry",
+    "authorized_security_operations",
+    "provided_records_only",
+}
+
+PERSON_ENTITY_TYPES = {
+    "PERSON_CANDIDATE",
+    "LEGAL_PERSON",
+    "EMPLOYEE",
+    "INDIVIDUAL",
+    "HUMAN",
+}
+
+SENSITIVE_KEYS = {
+    "race",
+    "ethnicity",
+    "religion",
+    "faith",
+    "sexual_orientation",
+    "sex_life",
+    "health",
+    "medical_condition",
+    "disability",
+    "mental_health",
+    "psychological_profile",
+    "personality",
+    "political_belief",
+    "political_affiliation",
+    "union_membership",
+    "biometric",
+    "face",
+    "facial",
+    "voiceprint",
+    "gait",
+    "fingerprint",
+    "iris",
+    "dna",
+    "lie_detector",
+    "deception",
+    "dangerousness",
+    "criminality",
+    "criminal_propensity",
+    "loyalty",
+    "extremism",
+    "terrorism_probability",
+    "fraudster_score",
+}
+
+CONTENT_KEYS = {
+    "message_body",
+    "email_body",
+    "chat_log",
+    "content",
+    "transcript",
+    "recording",
+    "private_message",
+    "dm",
+}
+
+EXACT_LOCATION_KEYS = {
+    "latitude",
+    "longitude",
+    "lat",
+    "lon",
+    "gps",
+    "home_address",
+    "private_address",
+    "street_address",
+    "exact_location",
+}
+
+PROHIBITED_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(r"(?i)\b(autonomously|automatically|auto)\b.*\b(accuse|convict|punish|terminate|suspend|freeze|block|blacklist|discipline|arrest)\b"),
+        "AUTONOMOUS_ACCUSATION_OR_PUNITIVE_ACTION",
+    ),
+    (
+        re.compile(r"(?i)\b(employee discipline|account suspension|fund freeze|vendor termination|legal action|criminal referral)\b"),
+        "PUNITIVE_OR_LEGAL_ACTION_REQUEST",
+    ),
+    (
+        re.compile(r"(?i)\b(attack (path|route|target|surface)|chokepoint|sabotage|evasion|penetration|exploit|weaponize)\b"),
+        "ATTACK_OPTIMIZATION_OR_SABOTAGE_REQUEST",
+    ),
+    (
+        re.compile(r"(?i)\b(infer|classify|score|detect)\s+(religion|ethnicity|race|political belief|sexual orientation|health|medical condition|mental health|criminality|guilt|dangerousness|loyalty)\b"),
+        "SENSITIVE_TRAIT_OR_RISK_PROFILING",
+    ),
+    (
+        re.compile(r"(?i)\b(track|surveil|stalk|monitor)\s+(person|individual|employee|target|someone)\b"),
+        "PRIVATE_TRACKING_OR_SURVEILLANCE",
+    ),
+    (
+        re.compile(r"(?i)\b(face recognition|voiceprint|biometric identif|gait recognition|typing cadence.*identify)\b"),
+        "BIOMETRIC_IDENTIFICATION_REQUEST",
+    ),
+    (
+        re.compile(r"(?i)\b(dox|harass|target individual|retaliate)\b"),
+        "DOXXING_OR_HARASSMENT",
+    ),
+]
+
+SOURCE_RELIABILITY: Dict[str, float] = {
+    "signed_system_log": 0.92,
+    "identity_log": 0.88,
+    "application_log": 0.82,
+    "endpoint_telemetry": 0.82,
+    "network_telemetry": 0.78,
+    "cloud_audit_log": 0.84,
+    "siem_event": 0.80,
+    "authorized_workflow": 0.82,
+    "authorized_ticketing": 0.78,
+    "transaction_record": 0.88,
+    "payment_metadata": 0.86,
+    "fraud_telemetry": 0.72,
+    "sensor_feed": 0.70,
+    "environmental_measurement": 0.70,
+    "public_repository": 0.58,
+    "public_website": 0.55,
+    "public_social_post": 0.45,
+    "self_reported": 0.35,
+    "third_party_report": 0.40,
+    "unknown": 0.30,
+}
+
+HIGH_AUTHORITY_SOURCE_TYPES = {
+    "signed_system_log",
+    "identity_log",
+    "application_log",
+    "endpoint_telemetry",
+    "network_telemetry",
+    "cloud_audit_log",
+    "siem_event",
+    "authorized_workflow",
+    "transaction_record",
+    "payment_metadata",
+}
+
+DOMAIN_HANDOFF: Dict[str, str] = {
+    "cyber": "INCIDENTINT / CTI",
+    "network": "NETINT",
+    "dns": "DNSINT",
+    "routing": "BGPINT",
+    "identity": "CREDINT / LOGINT",
+    "credentials": "CREDINT",
+    "malware": "MALINT",
+    "financial": "FININT / FRAUDINT",
+    "fraud": "FRAUDINT",
+    "trade": "TRADEINT",
+    "supply_chain": "SUPPLYCHAININT",
+    "logistics": "LOGINT / TRANSPORTINT",
+    "organizational": "ORGINT",
+    "behavioral": "BEHAVIOURALINT",
+    "environmental": "ENVINT",
+    "satellite": "SATINT / IMINT / GEOINT",
+    "maritime": "AISINT / TRANSPORTINT",
+    "radar": "RADINT",
+    "seismic": "SEISINT",
+    "narrative": "NARRATIVEINT / MEMEINT",
+    "operational": "OPSINT / LOGINT",
+    "data_quality": "LOGINT / DATA_STEWARD",
+    "sensor": "SENSORINT / LOGINT",
+    "unknown": "ANOMALYINT / HUMAN_REVIEW",
+}
+
+BENIGN_CONTEXT_TYPES = {
+    "role_change",
+    "system_migration",
+    "maintenance",
+    "project",
+    "automation",
+    "scheduled_process",
+    "policy_change",
+    "business_event",
+    "holiday",
+    "deployment",
+    "incident_response",
+    "travel",
+    "new_vendor",
+    "new_customer",
+    "new_employee",
+    "known_change",
+}
+
+CONTAMINATING_CONTEXT_TYPES = {
+    "incident",
+    "abuse",
+    "migration",
+    "special_project",
+    "holiday",
+    "outage",
+    "data_backfill",
+    "maintenance",
+    "deployment",
+}
+
+SEVERITY_RANK = {
+    "INFORMATIONAL": 0,
+    "LOW_REVIEW": 1,
+    "MEDIUM_REVIEW": 2,
+    "HIGH_REVIEW": 3,
+    "CRITICAL_REVIEW": 4,
+    "UNKNOWN": -1,
+}
+
+CONFIDENCE_RANK = {
+    "VERY_LOW": 0,
+    "LOW": 1,
+    "MODERATE": 2,
+    "HIGH": 3,
+    "UNKNOWN": -1,
+}
+
+STATUS_RANK = {
+    "DATA_QUALITY_ISSUE": 5,
+    "SENSOR_FAULT_CANDIDATE": 4,
+    "BENIGN_EXPLAINED": 3,
+    "CONTEXT_EXPLAINED": 3,
+    "RELATED_TO_KNOWN_EVENT": 2,
+    "VALIDATED_ANOMALY": 2,
+    "ESCALATION_CANDIDATE": 3,
+    "EXTERNAL_EVENT_CANDIDATE": 2,
+    "UNRESOLVED": 1,
+    "CANDIDATE": 1,
+    "DISMISSED": 0,
+}
+
+
+# --------------------------------------------------------------------
+# Generic helpers
+# --------------------------------------------------------------------
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def stable_id(prefix: str, *parts: Any) -> str:
+    raw = "|".join(str(json_safe(p)) for p in parts)
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}-{digest}"
+
+
+def json_safe(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {str(k): json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [json_safe(x) for x in obj]
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, timedelta):
+        return obj.total_seconds()
+    if isinstance(obj, bytes):
+        return obj.hex()
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    return str(obj)
+
+
+def normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    s = unicodedata.normalize("NFKC", str(value))
+    s = re.sub(r"[\u200b\u200c\u200d\u2060\ufeff]", "", s)
+    return s.strip()
+
+
+def collapse_ws(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def iso(dt: Optional[datetime]) -> Optional[str]:
+    return dt.isoformat() if isinstance(dt, datetime) else None
+
+
+def clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, value))
+
+
+def unique_preserve(items: Iterable[Any]) -> List[Any]:
+    seen = set()
+    out = []
+    for item in items:
+        key = json_safe(item)
+        if isinstance(key, (dict, list)):
+            key = json.dumps(key, sort_keys=True, ensure_ascii=False)
+        if key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def safe_mean(xs: Iterable[float]) -> float:
+    vals = [float(x) for x in xs]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def safe_stdev(xs: Iterable[float]) -> float:
+    vals = [float(x) for x in xs]
+    if len(vals) < 2:
+        return 0.0
+    m = safe_mean(vals)
+    return math.sqrt(sum((x - m) ** 2 for x in vals) / (len(vals) - 1))
+
+
+def safe_median(xs: Iterable[float]) -> float:
+    vals = sorted(float(x) for x in xs)
+    if not vals:
+        return 0.0
+    mid = len(vals) // 2
+    if len(vals) % 2:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
+def percentile(sorted_vals: List[float], p: float) -> Optional[float]:
+    if not sorted_vals:
+        return None
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    k = (len(sorted_vals) - 1) * (p / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_vals[int(k)]
+    return sorted_vals[f] * (c - k) + sorted_vals[c] * (k - f)
+
+
+def mad(values: Iterable[float]) -> float:
+    vals = [float(v) for v in values]
+    if not vals:
+        return 0.0
+    med = safe_median(vals)
+    return safe_median([abs(v - med) for v in vals])
+
+
+def robust_z(value: float, median: float, mad_value: float, std: float) -> float:
+    if mad_value > 1e-12:
+        return 0.6745 * (float(value) - median) / mad_value
+    if std > 1e-12:
+        return (float(value) - median) / std
+    return 0.0 if abs(float(value) - median) <= 1e-12 else 5.0
+
+
+def downgrade_confidence(conf: str, steps: int = 1) -> str:
+    order = ["VERY_LOW", "LOW", "MODERATE", "HIGH"]
+    if conf not in order:
+        conf = "LOW"
+    idx = max(0, order.index(conf) - steps)
+    return order[idx]
+
+
+def bump_confidence(conf: str, steps: int = 1) -> str:
+    order = ["VERY_LOW", "LOW", "MODERATE", "HIGH"]
+    if conf not in order:
+        conf = "LOW"
+    idx = min(len(order) - 1, order.index(conf) + steps)
+    return order[idx]
+
+
+def parse_time(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    s = normalize_text(value)
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        pass
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y-%m",
+        "%Y",
+    ):
+        try:
+            dt = datetime.strptime(s, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            continue
+    return None
+
+
+def parse_numeric_value(raw: Any) -> Optional[float]:
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return float(raw)
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = normalize_text(raw).replace(",", "")
+    m = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", s)
+    if not m:
+        return None
+    try:
+        return float(m.group())
+    except Exception:
+        return None
+
+
+def extract_unit(raw: Any) -> Optional[str]:
+    if raw is None:
+        return None
+    s = normalize_text(raw)
+    m = re.search(r"([A-Za-z%µ°/^-]+)$", s)
+    return m.group(1) if m else None
+
+
+def mask_value(value: Any, keep_prefix: int = 3, keep_suffix: int = 2) -> str:
+    s = normalize_text(value)
+    if not s:
+        return ""
+    if len(s) <= keep_prefix + keep_suffix:
+        return "*" * len(s)
+    return s[:keep_prefix] + "*" * (len(s) - keep_prefix - keep_suffix) + s[-keep_suffix:]
+
+
+def mask_entity(entity_id: Any, enabled: bool = True) -> str:
+    if not enabled:
+        return normalize_text(entity_id)
+    return mask_value(entity_id, keep_prefix=4, keep_suffix=2)
+
+
+def time_bucket(dt: Optional[datetime], minutes: int = 15) -> str:
+    if not dt:
+        return "UNKNOWN"
+    return str(int(dt.timestamp() // (minutes * 60)))
+
+
+def intervals_overlap(
+    a_start: Optional[datetime],
+    a_end: Optional[datetime],
+    b_start: Optional[datetime],
+    b_end: Optional[datetime],
+) -> bool:
+    if a_start is None and a_end is None:
+        return True
+    if b_start is None and b_end is None:
+        return True
+    if a_end and b_start and a_end < b_start:
+        return False
+    if b_end and a_start and b_end < a_start:
+        return False
+    return True
+
+
+# --------------------------------------------------------------------
+# Policy / authorization / privacy
+# --------------------------------------------------------------------
+
+def collect_manifest_text(manifest: Dict[str, Any]) -> str:
+    parts = [
+        normalize_text(manifest.get("objective", "")),
+        " ".join(normalize_text(q) for q in manifest.get("questions", []) or []),
+    ]
+    for fact in manifest.get("known_facts", []) or []:
+        if isinstance(fact, dict):
+            parts.append(normalize_text(fact.get("text") or fact.get("statement")))
+        else:
+            parts.append(normalize_text(fact))
+    return " ".join(parts)
+
+
+def policy_screen(manifest: Dict[str, Any]) -> List[str]:
+    blob = collect_manifest_text(manifest)
+    blocked = []
+    for pat, label in PROHIBITED_PATTERNS:
+        if pat.search(blob):
+            blocked.append(label)
+    return list(dict.fromkeys(blocked))
+
+
+def privacy_config(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    auth = manifest.get("authorization", {}) or {}
+    pc = dict(auth.get("privacy", {}) or manifest.get("privacy", {}) or {})
+    pc.setdefault("minimize_personal_data", True)
+    pc.setdefault("hash_entities", False)
+    pc.setdefault("mask_entity_display", True)
+    return pc
+
+
+def has_person_level_records(manifest: Dict[str, Any]) -> bool:
+    entity_types = {
+        normalize_text(e.get("entity_type", "")).upper()
+        for e in manifest.get("entities", []) or []
+    }
+    if entity_types & PERSON_ENTITY_TYPES:
+        return True
+    for obs in manifest.get("observations", []) or []:
+        et = normalize_text(obs.get("entity_type", "")).upper()
+        if et in PERSON_ENTITY_TYPES:
+            return True
+    return False
+
+
+def authorization_check(manifest: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    auth = manifest.get("authorization") or {}
+    reasons: List[str] = []
+
+    if not auth.get("approved"):
+        reasons.append("AUTHORIZATION_MISSING_OR_NOT_APPROVED")
+
+    scope = auth.get("scope", "provided_records_only")
+    if scope not in ALLOWED_SCOPES:
+        reasons.append("UNSUPPORTED_SCOPE")
+
+    model_mode = auth.get("model_mode", "LOCAL_ONLY")
+    if model_mode == "CLOUD" and not auth.get("cloud_approved"):
+        reasons.append("CLOUD_PROCESSING_NOT_APPROVED")
+
+    if model_mode not in {"LOCAL_ONLY", "HYBRID", "CLOUD"}:
+        reasons.append("UNKNOWN_MODEL_MODE")
+
+    if has_person_level_records(manifest) and not auth.get("person_level_approved"):
+        reasons.append("PERSON_LEVEL_ANALYSIS_NOT_APPROVED")
+
+    return (len(reasons) == 0), reasons
+
+
+# --------------------------------------------------------------------
+# Sources / pedigree / independence
+# --------------------------------------------------------------------
+
+def collect_referenced_source_ids(manifest: Dict[str, Any]) -> Set[str]:
+    ids = set()
+    for s in manifest.get("sources", []) or []:
+        sid = normalize_text(s.get("source_id"))
+        if sid:
+            ids.add(sid)
+    for obs in manifest.get("observations", []) or []:
+        sid = normalize_text(obs.get("source_id"))
+        if sid:
+            ids.add(sid)
+    return ids
+
+
+def ingest_sources(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    sources: Dict[str, Dict[str, Any]] = {}
+
+    for s in manifest.get("sources", []) or []:
+        sid = normalize_text(s.get("source_id"))
+        if not sid:
+            continue
+        stype = normalize_text(s.get("source_type", "unknown")).lower()
+        reliability = s.get("reliability")
+        if reliability is None:
+            reliability = SOURCE_RELIABILITY.get(stype, SOURCE_RELIABILITY["unknown"])
+        sources[sid] = {
+            "source_id": sid,
+            "source_type": stype,
+            "upstream_source_id": normalize_text(s.get("upstream_source_id")) or None,
+            "reliability": clamp(float(reliability)),
+            "observed_at": normalize_text(s.get("observed_at")) or None,
+            "url": s.get("url"),
+            "limitations": list(s.get("limitations", []) or []),
+        }
+
+    for sid in collect_referenced_source_ids(manifest):
+        if sid not in sources:
+            sources[sid] = {
+                "source_id": sid,
+                "source_type": "unknown",
+                "upstream_source_id": None,
+                "reliability": SOURCE_RELIABILITY["unknown"],
+                "observed_at": None,
+                "url": None,
+                "limitations": ["Source referenced but not defined in manifest."],
+            }
+
+    return sources
+
+
+def resolve_source_root(sid: str, sources: Dict[str, Dict[str, Any]], memo: Dict[str, str], visiting: Set[str]) -> str:
+    if sid in memo:
+        return memo[sid]
+    if sid in visiting:
+        return sid
+    visiting.add(sid)
+    src = sources.get(sid)
+    if not src or not src.get("upstream_source_id"):
+        memo[sid] = sid
+        visiting.discard(sid)
+        return sid
+    root = resolve_source_root(src["upstream_source_id"], sources, memo, visiting)
+    memo[sid] = root
+    visiting.discard(sid)
+    return root
+
+
+def build_source_roots(sources: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    memo: Dict[str, str] = {}
+    for sid in sources:
+        resolve_source_root(sid, sources, memo, set())
+    return memo
+
+
+def source_family_ids(source_ids: List[str], source_roots: Dict[str, str]) -> List[str]:
+    roots = []
+    for sid in source_ids:
+        roots.append(source_roots.get(sid, sid))
+    return list(dict.fromkeys(roots))
+
+
+def independence_state(families: List[str], sources: Dict[str, Dict[str, Any]], source_ids: List[str]) -> str:
+    if not source_ids:
+        return "UNKNOWN"
+    if len(families) <= 1:
+        return "DEPENDENT"
+    types = {sources.get(sid, {}).get("source_type", "unknown") for sid in source_ids}
+    rels = [sources.get(sid, {}).get("reliability", 0.3) for sid in source_ids]
+    if len(types) == 1 and max(rels) < 0.70:
+        return "PARTIALLY_DEPENDENT"
+    if max(rels) >= 0.70:
+        return "INDEPENDENT"
+    return "PARTIALLY_DEPENDENT"
+
+
+# --------------------------------------------------------------------
+# Features / entities / observations
+# --------------------------------------------------------------------
+
+def ingest_features(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    features: Dict[str, Dict[str, Any]] = {}
+    for f in manifest.get("features", []) or []:
+        fid = normalize_text(f.get("feature_id"))
+        if not fid:
+            continue
+        features[fid] = {
+            "feature_id": fid,
+            "domain": normalize_text(f.get("domain", "unknown")).lower(),
+            "value_type": normalize_text(f.get("value_type", "auto")).lower(),
+            "unit": normalize_text(f.get("unit")) or None,
+            "direction": normalize_text(f.get("direction", "both")).lower(),
+            "policy_min": float(f["policy_min"]) if f.get("policy_min") is not None else None,
+            "policy_max": float(f["policy_max"]) if f.get("policy_max") is not None else None,
+            "criticality": normalize_text(f.get("criticality", "medium")).lower(),
+            "sensitivity": normalize_text(f.get("sensitivity", "normal")).lower(),
+            "description": normalize_text(f.get("description")),
+            "limitations": list(f.get("limitations", []) or []),
+        }
+    return features
+
+
+def ingest_entities(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    entities: Dict[str, Dict[str, Any]] = {}
+    for e in manifest.get("entities", []) or []:
+        eid = normalize_text(e.get("entity_id"))
+        if not eid:
+            continue
+        entities[eid] = {
+            "entity_id": eid,
+            "entity_type": normalize_text(e.get("entity_type", "ACCOUNT")).upper(),
+            "criticality": normalize_text(e.get("criticality", "medium")).lower(),
+            "description": normalize_text(e.get("description")),
+        }
+    return entities
+
+
+def filter_sensitive_feature(feature_id: str, feature: Dict[str, Any]) -> bool:
+    fid = normalize_text(feature_id).lower()
+    domain = normalize_text(feature.get("domain", "")).lower()
+    return fid in SENSITIVE_KEYS or domain in SENSITIVE_KEYS
+
+
+def ingest_observations(
+    manifest: Dict[str, Any],
+    sources: Dict[str, Dict[str, Any]],
+    features: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+    privacy_cfg: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    records: List[Dict[str, Any]] = []
+    privacy_flags: List[Dict[str, Any]] = []
+
+    for idx, obs in enumerate(manifest.get("observations", []) or []):
+        obs_id = normalize_text(obs.get("observation_id")) or f"OBS-{idx}"
+        entity_raw = normalize_text(obs.get("entity_id") or "UNKNOWN_ENTITY")
+        entity_id = hashlib.sha256(entity_raw.encode("utf-8")).hexdigest()[:16] if privacy_cfg.get("hash_entities") else entity_raw
+        feature_id = normalize_text(obs.get("feature_id") or "UNKNOWN_FEATURE")
+
+        feature = features.get(feature_id, {})
+        if filter_sensitive_feature(feature_id, feature):
+            privacy_flags.append({
+                "observation_id": obs_id,
+                "entity_id": entity_id,
+                "type": "SENSITIVE_FEATURE_REMOVED",
+                "feature_id": feature_id,
+            })
+            continue
+
+        source_id = normalize_text(obs.get("source_id")) or None
+        src = sources.get(source_id, {}) if source_id else {}
+        ts = parse_time(obs.get("timestamp"))
+        raw_value = obs.get("raw_value", obs.get("value"))
+        value = parse_numeric_value(raw_value)
+        categorical = None if value is not None else normalize_text(raw_value)
+        unit = normalize_text(obs.get("unit")) or extract_unit(raw_value)
+        data_quality = normalize_text(obs.get("data_quality", "UNKNOWN")).upper()
+
+        if ts is None:
+            data_quality = "MISSING_TIMESTAMP"
+        if feature.get("value_type") == "numeric" and value is None and categorical:
+            data_quality = "INVALID_NUMERIC"
+
+        entity_meta = entities.get(entity_id, {})
+        entity_type = normalize_text(obs.get("entity_type") or entity_meta.get("entity_type") or "ACCOUNT").upper()
+
+        record = {
+            "observation_id": obs_id,
+            "source_id": source_id,
+            "source_type": src.get("source_type", "unknown"),
+            "source_reliability": float(src.get("reliability", SOURCE_RELIABILITY["unknown"])),
+            "entity_id": entity_id,
+            "entity_type": entity_type,
+            "feature_id": feature_id,
+            "timestamp": ts,
+            "raw_value": normalize_text(raw_value),
+            "value": value,
+            "categorical": categorical,
+            "unit": unit,
+            "target_entity": normalize_text(obs.get("target_entity") or obs.get("counterparty")) or None,
+            "data_quality": data_quality if data_quality != "UNKNOWN" else "OK",
+            "evidence_ids": [normalize_text(x) for x in obs.get("evidence_ids", []) or [] if normalize_text(x)],
+            "collection_method": normalize_text(obs.get("collection_method")) or None,
+            "duplicate_count": 0,
+            "issues": [],
+            "limitations": list(obs.get("limitations", []) or []),
+        }
+        records.append(record)
+
+    # Infer undefined features.
+    by_feature: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        by_feature[r["feature_id"]].append(r)
+
+    for fid, recs in by_feature.items():
+        if fid in features:
+            continue
+        has_numeric = any(r.get("value") is not None for r in recs)
+        has_categorical = any(r.get("categorical") is not None for r in recs)
+        value_type = "numeric" if has_numeric and not has_categorical else ("categorical" if has_categorical and not has_numeric else "mixed")
+        features[fid] = {
+            "feature_id": fid,
+            "domain": "unknown",
+            "value_type": value_type,
+            "unit": None,
+            "direction": "both",
+            "policy_min": None,
+            "policy_max": None,
+            "criticality": "medium",
+            "sensitivity": "normal",
+            "description": "Inferred from observations.",
+            "limitations": ["Feature definition was not supplied; inferred heuristically."],
+        }
+
+    return records, privacy_flags
+
+
+def deduplicate_observations(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen: Dict[Tuple[str, str, str, str, str], Dict[str, Any]] = {}
+    out: List[Dict[str, Any]] = []
+
+    for r in records:
+        key = (
+            normalize_text(r.get("source_id")),
+            normalize_text(r.get("entity_id")),
+            normalize_text(r.get("feature_id")),
+            iso(r.get("timestamp")) or "NO_TS",
+            normalize_text(r.get("raw_value")),
+        )
+        if key in seen:
+            existing = seen[key]
+            existing["duplicate_count"] += 1
+            if "DUPLICATE_INGESTION" not in existing["issues"]:
+                existing["issues"].append("DUPLICATE_INGESTION")
+            for evid in r.get("evidence_ids", []):
+                if evid not in existing["evidence_ids"]:
+                    existing["evidence_ids"].append(evid)
+            continue
+        seen[key] = r
+        out.append(r)
+
+    return out
+
+
+def detect_data_quality_issues(records: List[Dict[str, Any]], features: Dict[str, Dict[str, Any]]) -> Set[str]:
+    sensor_fault_obs_ids: Set[str] = set()
+
+    # Unit mismatch.
+    by_ef_units: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+    for r in records:
+        if r.get("unit"):
+            by_ef_units[(r["entity_id"], r["feature_id"])].add(r["unit"])
+
+    for r in records:
+        units = by_ef_units.get((r["entity_id"], r["feature_id"]), set())
+        if len(units) > 1:
+            r["issues"].append("UNIT_MISMATCH")
+            if r["data_quality"] == "OK":
+                r["data_quality"] = "UNIT_MISMATCH"
+
+    # Flatline / stuck sensor.
+    by_ef: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        if r.get("value") is not None and r.get("timestamp"):
+            by_ef[(r["entity_id"], r["feature_id"])].append(r)
+
+    for recs in by_ef.values():
+        recs.sort(key=lambda x: x["timestamp"])
+        run: List[Dict[str, Any]] = []
+        last_val = None
+        for r in recs:
+            if last_val is not None and abs(float(r["value"]) - float(last_val)) <= 1e-12:
+                run.append(r)
+            else:
+                if len(run) >= 5:
+                    for x in run:
+                        x["issues"].append("SENSOR_FLATLINE")
+                        sensor_fault_obs_ids.add(x["observation_id"])
+                run = [r]
+            last_val = r["value"]
+        if len(run) >= 5:
+            for x in run:
+                x["issues"].append("SENSOR_FLATLINE")
+                sensor_fault_obs_ids.add(x["observation_id"])
+
+    # Missing timestamp / invalid numeric already set in ingest.
+    for r in records:
+        if r["data_quality"] in {"MISSING_TIMESTAMP", "INVALID_NUMERIC"}:
+            r["issues"].append(r["data_quality"])
+
+    return sensor_fault_obs_ids
+
+
+# --------------------------------------------------------------------
+# Context windows: known events / maintenance / known changes
+# --------------------------------------------------------------------
+
+def ingest_context_windows(manifest: Dict[str, Any], key: str, context_class: str) -> List[Dict[str, Any]]:
+    out = []
+    for idx, c in enumerate(manifest.get(key, []) or []):
+        cid = normalize_text(c.get("context_id") or c.get("event_id") or f"{context_class.upper()}-{idx}")
+        out.append({
+            "context_id": cid,
+            "context_class": context_class,
+            "context_type": normalize_text(c.get("context_type", context_class)).lower(),
+            "entity_ids": [normalize_text(x) for x in c.get("entity_ids", []) or [] if normalize_text(x)],
+            "feature_ids": [normalize_text(x) for x in c.get("feature_ids", []) or [] if normalize_text(x)],
+            "valid_from": parse_time(c.get("valid_from") or c.get("start")),
+            "valid_to": parse_time(c.get("valid_to") or c.get("end")),
+            "description": normalize_text(c.get("description")),
+            "source_id": normalize_text(c.get("source_id")) or None,
+            "limitations": list(c.get("limitations", []) or []),
+        })
+    return out
+
+
+def all_contexts(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return (
+        ingest_context_windows(manifest, "known_events", "known_event")
+        + ingest_context_windows(manifest, "maintenance_windows", "maintenance")
+        + ingest_context_windows(manifest, "known_changes", "known_change")
+    )
+
+
+def context_overlaps_entity_feature_time(
+    ctx: Dict[str, Any],
+    entity_id: str,
+    feature_id: str,
+    ts: Optional[datetime],
+) -> bool:
+    if ctx.get("entity_ids") and entity_id not in ctx["entity_ids"]:
+        return False
+    if ctx.get("feature_ids") and feature_id not in ctx["feature_ids"]:
+        return False
+    if ts is None:
+        return False
+    start = ctx.get("valid_from")
+    end = ctx.get("valid_to")
+    if start is None and end is None:
+        return False
+    return intervals_overlap(ts, ts, start, end)
+
+
+# --------------------------------------------------------------------
+# Baseline statistics
+# --------------------------------------------------------------------
+
+def numeric_stats(pairs: List[Tuple[Optional[datetime], float]]) -> Dict[str, Any]:
+    pairs = [(t, float(v)) for t, v in pairs if v is not None]
+    if not pairs:
+        return {}
+
+    pairs.sort(key=lambda x: x[0] or FAR_FUTURE)
+    vals = [v for _, v in pairs]
+    times = [t for t, _ in pairs if t is not None]
+
+    sorted_vals = sorted(vals)
+    n = len(sorted_vals)
+    mean = safe_mean(sorted_vals)
+    std = safe_stdev(sorted_vals)
+    med = safe_median(sorted_vals)
+    madv = mad(sorted_vals)
+    q1 = percentile(sorted_vals, 25) or med
+    q3 = percentile(sorted_vals, 75) or med
+    iqr = q3 - q1
+    p05 = percentile(sorted_vals, 5)
+    p95 = percentile(sorted_vals, 95)
+
+    low_iqr = q1 - 1.5 * iqr
+    high_iqr = q3 + 1.5 * iqr
+
+    if madv > 1e-12:
+        robust_low = med - 3.0 * madv
+        robust_high = med + 3.0 * madv
+    elif std > 1e-12:
+        robust_low = med - 3.0 * std
+        robust_high = med + 3.0 * std
+    else:
+        robust_low = robust_high = med
+
+    trend_slope = None
+    if n >= 2:
+        if len(times) == n and times:
+            t0 = min(times)
+            xs = [(t - t0).total_seconds() / 86400.0 for t in times]
+        else:
+            xs = [float(i) for i in range(n)]
+        ys = vals
+        mx = safe_mean(xs)
+        my = safe_mean(ys)
+        denom = sum((x - mx) ** 2 for x in xs)
+        if denom > 1e-12:
+            trend_slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
+
+    ewma = vals[0]
+    ewma_var = 0.0
+    alpha = 0.3
+    for v in vals[1:]:
+        diff = v - ewma
+        ewma = alpha * v + (1 - alpha) * ewma
+        ewma_var = (1 - alpha) * (ewma_var + alpha * diff * diff)
+    ewma_std = math.sqrt(ewma_var) if ewma_var > 0 else 0.0
+
+    return {
+        "sample_count": n,
+        "mean": mean,
+        "std": std,
+        "median": med,
+        "mad": madv,
+        "min": sorted_vals[0],
+        "max": sorted_vals[-1],
+        "q1": q1,
+        "q3": q3,
+        "iqr": iqr,
+        "p05": p05,
+        "p95": p95,
+        "low_iqr": low_iqr,
+        "high_iqr": high_iqr,
+        "robust_low": robust_low,
+        "robust_high": robust_high,
+        "trend_slope": trend_slope,
+        "ewma": ewma,
+        "ewma_std": ewma_std,
+    }
+
+
+def categorical_stats(values: Iterable[str]) -> Dict[str, Any]:
+    vals = [normalize_text(v) for v in values if normalize_text(v)]
+    c = Counter(vals)
+    total = sum(c.values())
+    probs = {k: v / total for k, v in c.items()} if total else {}
+    return {
+        "sample_count": total,
+        "categories": sorted(c.keys()),
+        "counts": dict(c),
+        "probs": probs,
+    }
+
+
+def target_stats(values: Iterable[str]) -> Dict[str, Any]:
+    vals = [normalize_text(v) for v in values if normalize_text(v)]
+    c = Counter(vals)
+    return {
+        "sample_count": sum(c.values()),
+        "targets": sorted(c.keys()),
+        "counts": dict(c),
+    }
+
+
+def seasonality_stats(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    hour_counts = Counter(r["timestamp"].hour for r in records if r.get("timestamp"))
+    dow_counts = Counter(r["timestamp"].weekday() for r in records if r.get("timestamp"))
+    total = sum(hour_counts.values())
+    hour_probs = {str(k): v / total for k, v in hour_counts.items()} if total else {}
+    dow_total = sum(dow_counts.values())
+    dow_probs = {str(k): v / dow_total for k, v in dow_counts.items()} if dow_total else {}
+    return {
+        "hour_counts": {str(k): v for k, v in hour_counts.items()},
+        "dow_counts": {str(k): v for k, v in dow_counts.items()},
+        "hour_probs": hour_probs,
+        "dow_probs": dow_probs,
+    }
+
+
+def assess_baseline_quality(
+    train_obs: List[Dict[str, Any]],
+    feature: Dict[str, Any],
+    contexts: List[Dict[str, Any]],
+    unit_mismatch: bool,
+    sensor_fault_count: int,
+) -> Dict[str, Any]:
+    sample = len(train_obs)
+    if sample >= 30:
+        conf = "HIGH"
+    elif sample >= 10:
+        conf = "MODERATE"
+    elif sample >= 5:
+        conf = "LOW"
+    else:
+        conf = "INSUFFICIENT"
+
+    times = [o["timestamp"] for o in train_obs if o.get("timestamp")]
+    span_days = 0
+    if times:
+        span_days = (max(times) - min(times)).days + 1
+
+    contamination = []
+    if times:
+        start = min(times)
+        end = max(times)
+        for ctx in contexts:
+            if ctx.get("context_type") in CONTAMINATING_CONTEXT_TYPES or ctx.get("context_class") in {"maintenance", "known_change"}:
+                if intervals_overlap(start, end, ctx.get("valid_from"), ctx.get("valid_to")):
+                    contamination.append(ctx.get("context_type") or ctx.get("context_class"))
+
+    if contamination:
+        conf = downgrade_confidence(conf, 1)
+
+    bad = sum(1 for o in train_obs if o.get("data_quality") not in {"OK", "UNKNOWN"})
+    if sample and bad / sample > 0.2:
+        conf = downgrade_confidence(conf, 1)
+
+    if unit_mismatch:
+        conf = downgrade_confidence(conf, 1)
+
+    if sensor_fault_count:
+        conf = downgrade_confidence(conf, 1)
+
+    completeness = "PARTIAL" if bad else "UNKNOWN"
+    if sample >= 30 and not bad and not unit_mismatch and not sensor_fault_count:
+        completeness = "HIGH_COVERAGE"
+
+    return {
+        "confidence": conf,
+        "sample_size": sample,
+        "span_days": span_days,
+        "data_completeness": completeness,
+        "contamination_contexts": list(dict.fromkeys(contamination)),
+        "unit_mismatch": unit_mismatch,
+        "sensor_fault_count": sensor_fault_count,
+        "limitations": [
+            "Weak or contaminated baseline produces weak anomaly conclusions.",
+            "Baseline is a statistical reference, not truth.",
+        ],
+    }
+
+
+# --------------------------------------------------------------------
+# Baseline construction
+# --------------------------------------------------------------------
+
+def split_train_eval(
+    records: List[Dict[str, Any]],
+    baseline_window: Optional[Dict[str, Any]],
+    comparison_window: Optional[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    recs = sorted([r for r in records if r.get("timestamp")], key=lambda x: x["timestamp"])
+
+    if baseline_window:
+        bs = parse_time(baseline_window.get("start"))
+        be = parse_time(baseline_window.get("end"))
+        train = [r for r in recs if bs and be and bs <= r["timestamp"] <= be]
+        if comparison_window:
+            cs = parse_time(comparison_window.get("start"))
+            ce = parse_time(comparison_window.get("end"))
+            evals = [r for r in recs if cs and ce and cs <= r["timestamp"] <= ce]
+        else:
+            evals = [r for r in recs if be and r["timestamp"] > be]
+        return train, evals
+
+    if len(recs) >= 5:
+        split = max(1, int(len(recs) * 0.7))
+        return recs[:split], recs[split:]
+
+    return recs, recs
+
+
+def make_baseline(
+    entity_id: str,
+    feature_id: str,
+    baseline_type: str,
+    train_obs: List[Dict[str, Any]],
+    eval_obs: List[Dict[str, Any]],
+    feature: Dict[str, Any],
+    contexts: List[Dict[str, Any]],
+    peer_group_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    numeric_pairs = [(o.get("timestamp"), o.get("value")) for o in train_obs if o.get("value") is not None]
+    cat_values = [o.get("categorical") for o in train_obs if o.get("categorical") is not None]
+    target_values = [o.get("target_entity") for o in train_obs if o.get("target_entity")]
+
+    stats = numeric_stats(numeric_pairs) if numeric_pairs else {}
+    cats = categorical_stats(cat_values) if cat_values else {}
+    targets = target_stats(target_values) if target_values else {}
+    season = seasonality_stats(train_obs)
+
+    units = {o.get("unit") for o in train_obs if o.get("unit")}
+    unit_mismatch = len(units) > 1
+    sensor_fault_count = sum(1 for o in train_obs if "SENSOR_FLATLINE" in o.get("issues", []))
+
+    quality = assess_baseline_quality(train_obs, feature, contexts, unit_mismatch, sensor_fault_count)
+
+    expected_range = None
+    if stats:
+        expected_range = [stats.get("robust_low"), stats.get("robust_high")]
+    elif feature.get("policy_min") is not None or feature.get("policy_max") is not None:
+        expected_range = [feature.get("policy_min"), feature.get("policy_max")]
+        quality["confidence"] = "HIGH"
+        quality["data_completeness"] = "POLICY_REFERENCE"
+
+    return {
+        "baseline_id": stable_id("BASE", entity_id, feature_id, baseline_type, peer_group_id or ""),
+        "baseline_type": baseline_type,
+        "entity_id": entity_id,
+        "feature_id": feature_id,
+        "peer_group_id": peer_group_id,
+        "training_start": min([o["timestamp"] for o in train_obs if o.get("timestamp")], default=None),
+        "training_end": max([o["timestamp"] for o in train_obs if o.get("timestamp")], default=None),
+        "sample_count": len(train_obs),
+        "model_type": "ROBUST_STATISTICAL" if stats else ("CATEGORICAL" if cats else "POLICY" if expected_range else "UNKNOWN"),
+        "stats": stats,
+        "categorical_stats": cats,
+        "target_stats": targets,
+        "seasonality": season,
+        "expected_range": expected_range,
+        "quality": quality,
+        "training_observation_ids": [o["observation_id"] for o in train_obs],
+        "evaluation_observation_ids": [o["observation_id"] for o in eval_obs],
+        "limitations": [
+            "Baseline validity depends on sample size, coverage, contamination, and data quality.",
+            "Do not compare incompatible aggregation intervals or mixed units without normalization.",
+        ],
+    }
+
+
+def build_baselines(
+    observations: List[Dict[str, Any]],
+    features: Dict[str, Dict[str, Any]],
+    manifest: Dict[str, Any],
+    contexts: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    baselines: List[Dict[str, Any]] = []
+    baseline_window = manifest.get("baseline_window")
+    comparison_window = manifest.get("comparison_window")
+
+    by_ef: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for o in observations:
+        by_ef[(o["entity_id"], o["feature_id"])].append(o)
+
+    for (entity_id, feature_id), recs in by_ef.items():
+        feature = features.get(feature_id, {})
+        train, evals = split_train_eval(recs, baseline_window, comparison_window)
+
+        if train:
+            baselines.append(make_baseline(
+                entity_id=entity_id,
+                feature_id=feature_id,
+                baseline_type="SELF",
+                train_obs=train,
+                eval_obs=evals,
+                feature=feature,
+                contexts=contexts,
+            ))
+
+        if feature.get("policy_min") is not None or feature.get("policy_max") is not None:
+            baselines.append(make_baseline(
+                entity_id=entity_id,
+                feature_id=feature_id,
+                baseline_type="POLICY",
+                train_obs=[],
+                eval_obs=recs,
+                feature=feature,
+                contexts=contexts,
+            ))
+
+    for group in manifest.get("peer_groups", []) or []:
+        group_id = normalize_text(group.get("peer_group_id") or stable_id("PEER", *(group.get("entities", []) or [])))
+        entities = [normalize_text(x) for x in group.get("entities", []) or [] if normalize_text(x)]
+        group_obs = [o for o in observations if o["entity_id"] in entities]
+
+        for target in entities:
+            for feature_id in {o["feature_id"] for o in group_obs if o["entity_id"] == target}:
+                target_recs = [o for o in group_obs if o["entity_id"] == target and o["feature_id"] == feature_id]
+                peer_recs = [o for o in group_obs if o["entity_id"] != target and o["feature_id"] == feature_id]
+                if not target_recs or not peer_recs:
+                    continue
+
+                ptrain, _ = split_train_eval(peer_recs, baseline_window, comparison_window)
+                _, tevals = split_train_eval(target_recs, baseline_window, comparison_window)
+                if not tevals:
+                    tevals = target_recs
+
+                if ptrain:
+                    baselines.append(make_baseline(
+                        entity_id=target,
+                        feature_id=feature_id,
+                        baseline_type="PEER",
+                        train_obs=ptrain,
+                        eval_obs=tevals,
+                        feature=features.get(feature_id, {}),
+                        contexts=contexts,
+                        peer_group_id=group_id,
+                    ))
+
+    return baselines
+
+
+# --------------------------------------------------------------------
+# Anomaly detection
+# --------------------------------------------------------------------
+
+def threshold_settings(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    th = dict(manifest.get("thresholds", {}) or {})
+    sensitivity = normalize_text(th.get("sensitivity", "medium")).lower()
+    z_map = {"high": 2.5, "medium": 3.0, "low": 3.5}
+    th.setdefault("z_score", z_map.get(sensitivity, 3.0))
+    th.setdefault("iqr_multiplier", 1.5)
+    th.setdefault("rare_category_prob", 0.02)
+    th.setdefault("time_bucket_minutes", 15)
+    th.setdefault("episode_window_hours", 2.0)
+    th.setdefault("persistence_window_hours", 6.0)
+    return th
+
+
+def severity_from_score(score: float, feature: Dict[str, Any], data_quality: str, corroboration_count: int = 0) -> str:
+    if score >= 5.0:
+        sev = "HIGH_REVIEW"
+    elif score >= 3.0:
+        sev = "MEDIUM_REVIEW"
+    elif score >= 2.0:
+        sev = "LOW_REVIEW"
+    else:
+        sev = "INFORMATIONAL"
+
+    if normalize_text(feature.get("criticality")).lower() in {"high", "critical"} and score >= 2.0:
+        sev = bump_confidence(sev.replace("_REVIEW", "").replace("_", "_"), 0)  # no-op placeholder
+        if sev == "LOW_REVIEW":
+            sev = "MEDIUM_REVIEW"
+        elif sev == "MEDIUM_REVIEW":
+            sev = "HIGH_REVIEW"
+
+    if corroboration_count >= 2 and sev in {"LOW_REVIEW", "MEDIUM_REVIEW"}:
+        sev = "HIGH_REVIEW" if sev == "MEDIUM_REVIEW" else "MEDIUM_REVIEW"
+
+    if data_quality not in {"OK", "POLICY_REFERENCE"}:
+        if sev == "HIGH_REVIEW":
+            sev = "MEDIUM_REVIEW"
+        elif sev == "MEDIUM_REVIEW":
+            sev = "LOW_REVIEW"
+
+    return sev
+
+
+def confidence_from_baseline_quality(quality: Dict[str, Any], data_quality: str, independence: str, duplicate_count: int) -> str:
+    qconf = normalize_text(quality.get("confidence", "LOW")).upper()
+    mapping = {
+        "HIGH": "MODERATE",
+        "MODERATE": "LOW",
+        "LOW": "LOW",
+        "INSUFFICIENT": "VERY_LOW",
+    }
+    conf = mapping.get(qconf, "LOW")
+
+    if data_quality in {"OK", "POLICY_REFERENCE"}:
+        conf = bump_confidence(conf, 1)
+    else:
+        conf = downgrade_confidence(conf, 1)
+
+    if independence == "INDEPENDENT" and duplicate_count == 0:
+        conf = bump_confidence(conf, 1)
+    elif independence == "DEPENDENT":
+        conf = downgrade_confidence(conf, 1)
+
+    if conf == "HIGH" and qconf != "HIGH":
+        conf = "MODERATE"
+
+    return conf
+
+
+def make_anomaly(
+    obs: Dict[str, Any],
+    baseline: Dict[str, Any],
+    feature: Dict[str, Any],
+    triggered: List[str],
+    score: float,
+    threshold: float,
+    sources: Dict[str, Dict[str, Any]],
+    source_roots: Dict[str, str],
+) -> Dict[str, Any]:
+    value = obs.get("value")
+    median = baseline.get("stats", {}).get("median")
+    expected_range = baseline.get("expected_range")
+
+    deviation = None
+    direction = "UNKNOWN"
+    if value is not None and median is not None:
+        deviation = float(value) - float(median)
+        direction = "HIGH" if deviation > 0 else "LOW" if deviation < 0 else "EQUAL"
+    elif value is not None and expected_range and expected_range[0] is not None and expected_range[1] is not None:
+        low, high = expected_range
+        if value < low:
+            deviation = float(low) - float(value)
+            direction = "LOW"
+        elif value > high:
+            deviation = float(value) - float(high)
+            direction = "HIGH"
+
+    source_ids = [obs.get("source_id")] if obs.get("source_id") else []
+    families = source_family_ids(source_ids, source_roots)
+    indep = independence_state(families, sources, source_ids)
+
+    anomaly_type = "UNIVARIATE_OUTLIER"
+    if "POLICY" in triggered:
+        anomaly_type = "POLICY_DEVIATION"
+    elif "NOVEL_CATEGORY" in triggered or "NEW_COUNTERPARTY" in triggered:
+        anomaly_type = "NOVELTY"
+    elif "RARE_CATEGORY" in triggered:
+        anomaly_type = "DISTRIBUTION_ANOMALY"
+    elif "EWMA" in triggered:
+        anomaly_type = "TIME_SERIES_ANOMALY"
+
+    return {
+        "anomaly_id": stable_id("ANOM", obs["observation_id"], baseline["baseline_id"], *triggered),
+        "entity_id": obs["entity_id"],
+        "entity_display": mask_entity(obs["entity_id"]),
+        "entity_type": obs.get("entity_type"),
+        "feature_id": obs["feature_id"],
+        "domain": feature.get("domain", "unknown"),
+        "anomaly_type": anomaly_type,
+        "observation_id": obs["observation_id"],
+        "timestamp": obs.get("timestamp"),
+        "observed_value": obs.get("raw_value"),
+        "observed_numeric": value,
+        "observed_categorical": obs.get("categorical"),
+        "expected_range": expected_range,
+        "baseline_id": baseline["baseline_id"],
+        "baseline_type": baseline["baseline_type"],
+        "deviation": deviation,
+        "direction": direction,
+        "score": round(float(score), 4),
+        "score_method": triggered,
+        "threshold": threshold,
+        "severity": severity_from_score(score, feature, obs.get("data_quality", "UNKNOWN")),
+        "confidence": confidence_from_baseline_quality(baseline.get("quality", {}), obs.get("data_quality", "UNKNOWN"), indep, obs.get("duplicate_count", 0)),
+        "data_quality": obs.get("data_quality", "UNKNOWN"),
+        "persistence": "UNKNOWN",
+        "recurrence": "UNKNOWN",
+        "context": [],
+        "possible_explanations": [],
+        "corroborating_signals": [],
+        "contradicting_signals": [],
+        "status": "CANDIDATE",
+        "evidence_ids": obs.get("evidence_ids", []),
+        "source_ids": source_ids,
+        "source_independence_state": indep,
+        "independent_source_family_count": len(families),
+        "limitations": [
+            "Anomaly means deviation from a baseline, not malice, intent, fraud, incident, or compromise.",
+            "Statistical rarity is not evidence of criminality or policy violation.",
+        ],
+    }
+
+
+def detect_anomalies(
+    observations: List[Dict[str, Any]],
+    baselines: List[Dict[str, Any]],
+    features: Dict[str, Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+    source_roots: Dict[str, str],
+    thresholds: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    obs_by_id = {o["observation_id"]: o for o in observations}
+    anomalies: List[Dict[str, Any]] = []
+    z_threshold = float(thresholds.get("z_score", 3.0))
+    rare_prob = float(thresholds.get("rare_category_prob", 0.02))
+
+    for b in baselines:
+        qconf = normalize_text(b.get("quality", {}).get("confidence", "LOW")).upper()
+        if b["baseline_type"] != "POLICY" and qconf == "INSUFFICIENT":
+            continue
+
+        for oid in b.get("evaluation_observation_ids", []):
+            obs = obs_by_id.get(oid)
+            if not obs:
+                continue
+
+            feature = features.get(obs["feature_id"], {})
+            triggered: List[str] = []
+            score = 0.0
+
+            stats = b.get("stats", {})
+            if obs.get("value") is not None and stats:
+                med = float(stats.get("median", 0.0))
+                madv = float(stats.get("mad", 0.0))
+                std = float(stats.get("std", 0.0))
+                rz = robust_z(float(obs["value"]), med, madv, std)
+                if abs(rz) >= z_threshold:
+                    triggered.append("ROBUST_Z")
+                    score = max(score, abs(rz))
+
+                low_iqr = stats.get("low_iqr")
+                high_iqr = stats.get("high_iqr")
+                if low_iqr is not None and high_iqr is not None:
+                    if float(obs["value"]) < float(low_iqr) or float(obs["value"]) > float(high_iqr):
+                        triggered.append("IQR")
+                        score = max(score, 3.0)
+
+                p05 = stats.get("p05")
+                p95 = stats.get("p95")
+                if p05 is not None and p95 is not None:
+                    if float(obs["value"]) < float(p05) or float(obs["value"]) > float(p95):
+                        triggered.append("PERCENTILE")
+                        score = max(score, 2.5)
+
+                ewma = stats.get("ewma")
+                ewma_std = stats.get("ewma_std")
+                if ewma is not None and ewma_std and float(ewma_std) > 1e-12:
+                    ez = abs(float(obs["value"]) - float(ewma)) / float(ewma_std)
+                    if ez >= z_threshold:
+                        triggered.append("EWMA")
+                        score = max(score, ez)
+
+            if feature.get("policy_min") is not None or feature.get("policy_max") is not None:
+                vmin = feature.get("policy_min")
+                vmax = feature.get("policy_max")
+                val = obs.get("value")
+                if val is not None:
+                    if (vmin is not None and float(val) < float(vmin)) or (vmax is not None and float(val) > float(vmax)):
+                        triggered.append("POLICY")
+                        score = max(score, 4.0)
+
+            cats = b.get("categorical_stats", {})
+            if obs.get("categorical") is not None and cats:
+                if obs["categorical"] not in cats.get("categories", []):
+                    triggered.append("NOVEL_CATEGORY")
+                    score = max(score, 3.0)
+                elif float(cats.get("probs", {}).get(obs["categorical"], 1.0)) < rare_prob:
+                    triggered.append("RARE_CATEGORY")
+                    score = max(score, 2.5)
+
+            targets = b.get("target_stats", {})
+            if obs.get("target_entity") and targets:
+                if obs["target_entity"] not in targets.get("targets", []):
+                    triggered.append("NEW_COUNTERPARTY")
+                    score = max(score, 2.0)
+
+            if not triggered:
+                continue
+
+            anomalies.append(make_anomaly(
+                obs=obs,
+                baseline=b,
+                feature=feature,
+                triggered=list(dict.fromkeys(triggered)),
+                score=score,
+                threshold=z_threshold,
+                sources=sources,
+                source_roots=source_roots,
+            ))
+
+    return unique_preserve(anomalies)[:1000]
+
+
+# --------------------------------------------------------------------
+# Enrichment: benign explanations, corroboration, contradictions, persistence
+# --------------------------------------------------------------------
+
+def enrich_with_context(
+    anomalies: List[Dict[str, Any]],
+    observations: List[Dict[str, Any]],
+    contexts: List[Dict[str, Any]],
+    sensor_fault_obs_ids: Set[str],
+) -> None:
+    obs_by_id = {o["observation_id"]: o for o in observations}
+
+    for a in anomalies:
+        obs = obs_by_id.get(a["observation_id"], {})
+        explanations = []
+        status = a["status"]
+
+        for ctx in contexts:
+            if context_overlaps_entity_feature_time(ctx, a["entity_id"], a["feature_id"], a.get("timestamp")):
+                desc = ctx.get("description") or ctx.get("context_id")
+                cls = ctx.get("context_class")
+                typ = ctx.get("context_type")
+                explanations.append(f"{cls}:{typ} overlap ({desc})")
+                if cls == "maintenance":
+                    status = "RELATED_TO_KNOWN_EVENT"
+                elif cls in {"known_event", "known_change"}:
+                    status = "CONTEXT_EXPLAINED"
+
+        if obs.get("data_quality") not in {"OK", "POLICY_REFERENCE"}:
+            explanations.append(f"Data-quality issue: {obs.get('data_quality')}")
+            status = "DATA_QUALITY_ISSUE"
+
+        if obs.get("observation_id") in sensor_fault_obs_ids:
+            explanations.append("Sensor flatline / stuck-value candidate")
+            status = "SENSOR_FAULT_CANDIDATE"
+
+        if obs.get("duplicate_count", 0) > 0:
+            explanations.append("Duplicate ingestion may inflate volume/count signals")
+
+        baseline_sample = None
+        # Cold start heuristic: if entity/feature has very few total observations.
+        total_same_ef = sum(1 for o in observations if o["entity_id"] == a["entity_id"] and o["feature_id"] == a["feature_id"])
+        if total_same_ef < 5:
+            explanations.append("Cold-start / insufficient history for this entity-feature")
+
+        a["possible_explanations"] = list(dict.fromkeys(explanations))
+
+        # Final status priority.
+        if status == "DATA_QUALITY_ISSUE":
+            a["status"] = "DATA_QUALITY_ISSUE"
+        elif status == "SENSOR_FAULT_CANDIDATE":
+            a["status"] = "SENSOR_FAULT_CANDIDATE"
+        elif any("Cold-start" in x for x in explanations):
+            a["status"] = "CANDIDATE"
+        elif status in {"CONTEXT_EXPLAINED", "RELATED_TO_KNOWN_EVENT"}:
+            a["status"] = status
+        elif a.get("confidence") in {"MODERATE", "HIGH"}:
+            a["status"] = "VALIDATED_ANOMALY"
+        else:
+            a["status"] = "CANDIDATE"
+
+        a["context"] = list(dict.fromkeys([x for x in explanations if "overlap" in x]))
+
+
+def enrich_corroboration_and_contradictions(
+    anomalies: List[Dict[str, Any]],
+    observations: List[Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+    source_roots: Dict[str, str],
+    thresholds: Dict[str, Any],
+) -> None:
+    obs_by_id = {o["observation_id"]: o for o in observations}
+    bucket_minutes = int(thresholds.get("time_bucket_minutes", 15))
+
+    groups: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for a in anomalies:
+        key = (a["entity_id"], a["feature_id"], time_bucket(a.get("timestamp"), bucket_minutes))
+        groups[key].append(a)
+
+    for key, lst in groups.items():
+        source_ids = sorted({sid for a in lst for sid in a.get("source_ids", []) if sid})
+        families = source_family_ids(source_ids, source_roots)
+        indep = independence_state(families, sources, source_ids)
+
+        if len(families) >= 2 and indep == "INDEPENDENT":
+            for a in lst:
+                a["corroborating_signals"].append("independent_source_corroboration")
+                a["source_independence_state"] = indep
+                a["independent_source_family_count"] = len(families)
+                if a["confidence"] in {"LOW", "VERY_LOW"}:
+                    a["confidence"] = bump_confidence(a["confidence"], 1)
+
+        # Contradiction: different sources report materially different values for same entity/feature/time bucket.
+        vals = []
+        for a in lst:
+            obs = obs_by_id.get(a["observation_id"])
+            if obs and obs.get("value") is not None:
+                vals.append((a, float(obs["value"])))
+        if len({sid for a, _ in vals for sid in a.get("source_ids", [])}) > 1 and len(vals) >= 2:
+            values = [v for _, v in vals]
+            med = safe_median(values)
+            spread = max(values) - min(values)
+            tolerance = max(1e-9, 0.2 * abs(med))
+            if spread > tolerance:
+                for a, _ in vals:
+                    a["contradicting_signals"].append("source_value_disagreement_in_same_window")
+
+
+def enrich_persistence_and_recurrence(
+    anomalies: List[Dict[str, Any]],
+    thresholds: Dict[str, Any],
+) -> None:
+    persistence_hours = float(thresholds.get("persistence_window_hours", 6.0))
+    by_ef: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for a in anomalies:
+        if a.get("timestamp"):
+            by_ef[(a["entity_id"], a["feature_id"])].append(a)
+
+    for lst in by_ef.values():
+        lst.sort(key=lambda x: x["timestamp"])
+        if len(lst) == 1:
+            lst[0]["persistence"] = "TRANSIENT"
+            lst[0]["recurrence"] = "SINGLE_OBSERVATION"
+            continue
+
+        clusters = []
+        cur = [lst[0]]
+        for prev, nxt in zip(lst, lst[1:]):
+            gap_hours = (nxt["timestamp"] - prev["timestamp"]).total_seconds() / 3600.0
+            if gap_hours <= persistence_hours:
+                cur.append(nxt)
+            else:
+                clusters.append(cur)
+                cur = [nxt]
+        clusters.append(cur)
+
+        for cluster in clusters:
+            for a in cluster:
+                a["persistence"] = "PERSISTENT" if len(cluster) > 1 else "TRANSIENT"
+        if len(clusters) > 1:
+            for a in lst:
+                a["recurrence"] = "RECURRING"
+        else:
+            for a in lst:
+                a["recurrence"] = "CONTINUOUS_CLUSTER"
+
+
+# --------------------------------------------------------------------
+# Episodes / multivariate / root-cause candidates / ACH
+# --------------------------------------------------------------------
+
+def make_episode(anomalies: List[Dict[str, Any]], thresholds: Dict[str, Any]) -> Dict[str, Any]:
+    anomalies = sorted([a for a in anomalies if a.get("timestamp")], key=lambda x: x["timestamp"])
+    if not anomalies:
+        return {}
+
+    entity_id = anomalies[0]["entity_id"]
+    features = sorted({a["feature_id"] for a in anomalies})
+    domains = sorted({a.get("domain", "unknown") for a in anomalies})
+    severities = [a.get("severity", "UNKNOWN") for a in anomalies]
+    max_severity = max(severities, key=lambda s: SEVERITY_RANK.get(s, -1))
+    statuses = [a.get("status", "CANDIDATE") for a in anomalies]
+    max_status = max(statuses, key=lambda s: STATUS_RANK.get(s, -1))
+
+    data_quality_issue = any(a.get("status") == "DATA_QUALITY_ISSUE" or a.get("data_quality") not in {"OK", "POLICY_REFERENCE"} for a in anomalies)
+    sensor_fault = any(a.get("status") == "SENSOR_FAULT_CANDIDATE" for a in anomalies)
+    known_maintenance = any(any("maintenance" in str(x).lower() for x in a.get("context", [])) for a in anomalies)
+    corroborated = any("independent_source_corroboration" in a.get("corroborating_signals", []) for a in anomalies)
+    novelty = any(a.get("anomaly_type") == "NOVELTY" or "NOVEL_CATEGORY" in a.get("score_method", []) or "NEW_COUNTERPARTY" in a.get("score_method", []) for a in anomalies)
+    policy = any("POLICY" in a.get("score_method", []) for a in anomalies)
+    multivariate = len(features) > 1
+    max_score = max(float(a.get("score", 0.0)) for a in anomalies)
+
+    root_candidates = ["unknown"]
+    if known_maintenance:
+        root_candidates.extend(["maintenance", "configuration_change", "software_release"])
+    if data_quality_issue or sensor_fault:
+        root_candidates.extend(["sensor_fault", "pipeline_error", "parser_error"])
+    if novelty:
+        root_candidates.extend(["legitimate_business_change", "new_vendor_or_customer", "new_device_or_location"])
+    if policy:
+        root_candidates.extend(["policy_exception", "configuration_error"])
+    if "cyber" in domains or "identity" in domains or "network" in domains:
+        root_candidates.append("security_incident_candidate")
+    if "financial" in domains or "fraud" in domains:
+        root_candidates.append("financial_anomaly_candidate")
+    if "trade" in domains or "supply_chain" in domains or "logistics" in domains:
+        root_candidates.append("supply_or_trade_disruption_candidate")
+    if "environmental" in domains or "sensor" in domains:
+        root_candidates.append("environmental_or_sensor_event_candidate")
+
+    return {
+        "episode_id": stable_id("EP", entity_id, iso(anomalies[0].get("timestamp")), iso(anomalies[-1].get("timestamp")), *features),
+        "entity_id": entity_id,
+        "entity_display": mask_entity(entity_id),
+        "start_utc": anomalies[0].get("timestamp"),
+        "end_utc": anomalies[-1].get("timestamp"),
+        "anomaly_ids": [a["anomaly_id"] for a in anomalies],
+        "features": features,
+        "domains": domains,
+        "severity": max_severity,
+        "status": max_status,
+        "multivariate_context": multivariate,
+        "data_quality_issue": data_quality_issue,
+        "sensor_fault": sensor_fault,
+        "known_maintenance": known_maintenance,
+        "source_independent_corroboration": corroborated,
+        "novelty": novelty,
+        "policy_violation": policy,
+        "max_score": round(max_score, 4),
+        "root_cause_candidates": list(dict.fromkeys(root_candidates)),
+        "limitations": [
+            "Episode is a cluster of anomaly candidates, not an incident, fraud, or malicious verdict.",
+            "Root-cause candidates require specialist and/or human verification.",
+        ],
+    }
+
+
+def build_episodes(anomalies: List[Dict[str, Any]], thresholds: Dict[str, Any]) -> List[Dict[str, Any]]:
+    episode_window = timedelta(hours=float(thresholds.get("episode_window_hours", 2.0)))
+    anomalies = sorted([a for a in anomalies if a.get("timestamp")], key=lambda x: (x["entity_id"], x["timestamp"]))
+    episodes = []
+    cur: List[Dict[str, Any]] = []
+
+    for a in anomalies:
+        if not cur:
+            cur = [a]
+            continue
+        if a["entity_id"] == cur[-1]["entity_id"] and (a["timestamp"] - cur[-1]["timestamp"]) <= episode_window:
+            cur.append(a)
+        else:
+            ep = make_episode(cur, thresholds)
+            if ep:
+                episodes.append(ep)
+            cur = [a]
+
+    if cur:
+        ep = make_episode(cur, thresholds)
+        if ep:
+            episodes.append(ep)
+
+    return episodes
+
+
+HYPOTHESES = [
+    ("BENIGN_BUSINESS_CHANGE", "BENIGN"),
+    ("INSTRUMENTATION_FAILURE", "INSTRUMENTATION"),
+    ("CONFIGURATION_ERROR", "CONFIGURATION"),
+    ("SECURITY_INCIDENT_CANDIDATE", "SECURITY"),
+    ("EXTERNAL_EVENT", "EXTERNAL"),
+    ("UNKNOWN", "UNKNOWN"),
+]
+
+
+def classify_ach(evidence_type: str, hypothesis_category: str) -> str:
+    if evidence_type == "known_maintenance":
+        if hypothesis_category in {"BENIGN", "CONFIGURATION"}:
+            return "CONSISTENT"
+        if hypothesis_category == "SECURITY":
+            return "INCONSISTENT"
+        return "NEUTRAL"
+
+    if evidence_type in {"data_quality_issue", "sensor_fault", "weak_baseline"}:
+        if hypothesis_category == "INSTRUMENTATION":
+            return "CONSISTENT"
+        if hypothesis_category in {"BENIGN", "CONFIGURATION"}:
+            return "NEUTRAL"
+        return "NEUTRAL"
+
+    if evidence_type == "source_independent_corroboration":
+        if hypothesis_category == "INSTRUMENTATION":
+            return "INCONSISTENT"
+        if hypothesis_category in {"SECURITY", "EXTERNAL", "BENIGN"}:
+            return "CONSISTENT"
+        return "NEUTRAL"
+
+    if evidence_type == "multivariate_context":
+        if hypothesis_category in {"SECURITY", "EXTERNAL"}:
+            return "CONSISTENT"
+        if hypothesis_category == "INSTRUMENTATION":
+            return "INCONSISTENT"
+        return "NEUTRAL"
+
+    if evidence_type == "policy_violation":
+        if hypothesis_category in {"CONFIGURATION", "BENIGN"}:
+            return "CONSISTENT"
+        return "NEUTRAL"
+
+    if evidence_type == "novelty":
+        if hypothesis_category in {"BENIGN", "SECURITY", "EXTERNAL"}:
+            return "CONSISTENT"
+        return "NEUTRAL"
+
+    if evidence_type == "signal_strength":
+        if hypothesis_category in {"SECURITY", "EXTERNAL"}:
+            return "CONSISTENT"
+        return "NEUTRAL"
+
+    return "NEUTRAL"
+
+
+def evaluate_ach_for_episode(episode: Dict[str, Any], thresholds: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    hypotheses = [
+        {
+            "hypothesis_id": stable_id("HYP", episode["episode_id"], hid),
+            "episode_id": episode["episode_id"],
+            "category": cat,
+            "statement": f"{hid.replace('_', ' ').title()} may explain the anomaly episode.",
+        }
+        for hid, cat in HYPOTHESES
+    ]
+
+    evidence = []
+    if float(episode.get("max_score", 0.0)) >= float(thresholds.get("z_score", 3.0)):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "signal"), "type": "signal_strength", "description": f"Max anomaly score {episode.get('max_score')}"})
+    if episode.get("data_quality_issue"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "dq"), "type": "data_quality_issue", "description": "Data-quality issue present"})
+    if episode.get("sensor_fault"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "sensor"), "type": "sensor_fault", "description": "Sensor fault candidate present"})
+    if episode.get("known_maintenance"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "maint"), "type": "known_maintenance", "description": "Known maintenance/context overlap"})
+    if episode.get("source_independent_corroboration"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "indep"), "type": "source_independent_corroboration", "description": "Independent source corroboration present"})
+    if episode.get("novelty"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "novel"), "type": "novelty", "description": "Novel category / new counterparty / unseen pattern"})
+    if episode.get("policy_violation"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "policy"), "type": "policy_violation", "description": "Policy/specification deviation present"})
+    if episode.get("multivariate_context"):
+        evidence.append({"evidence_id": stable_id("ACHEV", episode["episode_id"], "multi"), "type": "multivariate_context", "description": "Multiple features anomalous in same episode"})
+
+    # Weak baseline evidence can be inferred from anomaly confidence if needed; omitted for brevity.
+
+    matrix = []
+    consistent_counts: Counter = Counter()
+    for ev in evidence:
+        row = {"evidence_id": ev["evidence_id"], "assessments": {}}
+        for h in hypotheses:
+            val = classify_ach(ev["type"], h["category"])
+            row["assessments"][h["hypothesis_id"]] = val
+            if val == "CONSISTENT":
+                consistent_counts[h["hypothesis_id"]] += 1
+        matrix.append(row)
+
+    by_cat: Dict[str, int] = defaultdict(int)
+    for h in hypotheses:
+        by_cat[h["category"]] += consistent_counts[h["hypothesis_id"]]
+
+    benign_score = by_cat["BENIGN"]
+    artifact_score = by_cat["INSTRUMENTATION"]
+    config_score = by_cat["CONFIGURATION"]
+    security_score = by_cat["SECURITY"]
+    external_score = by_cat["EXTERNAL"]
+
+    if artifact_score > 0 and artifact_score >= max(benign_score, config_score, security_score, external_score) and (episode.get("data_quality_issue") or episode.get("sensor_fault")):
+        status = "DATA_QUALITY_ISSUE"
+    elif benign_score > 0 and benign_score >= max(artifact_score, config_score, security_score, external_score):
+        status = "BENIGN_EXPLAINED"
+    elif config_score > 0 and config_score >= max(benign_score, artifact_score, security_score, external_score):
+        status = "CONTEXT_EXPLAINED"
+    elif security_score > 0 and security_score > max(benign_score, artifact_score, config_score):
+        status = "ESCALATION_CANDIDATE"
+    elif external_score > 0 and external_score > max(benign_score, artifact_score, config_score, security_score):
+        status = "EXTERNAL_EVENT_CANDIDATE"
+    else:
+        status = "UNRESOLVED"
+
+    review = {
+        "episode_id": episode["episode_id"],
+        "evidence": evidence,
+        "matrix": matrix,
+        "status": status,
+        "scores": {
+            "benign": benign_score,
+            "instrumentation": artifact_score,
+            "configuration": config_score,
+            "security": security_score,
+            "external": external_score,
+        },
+        "limitations": [
+            "ACH output is analytical support, not proof.",
+            "Security-incident candidates require INCIDENTINT / human review and independent evidence.",
+            "No autonomous accusation or punitive action is implied.",
+        ],
+    }
+    return hypotheses, review
+
+
+# --------------------------------------------------------------------
+# Gaps / actions / handoffs / graph / report
+# --------------------------------------------------------------------
+
+def build_observations_summary(
+    observations: List[Dict[str, Any]],
+    baselines: List[Dict[str, Any]],
+    anomalies: List[Dict[str, Any]],
+    episodes: List[Dict[str, Any]],
+    privacy_flags: List[Dict[str, Any]],
+) -> List[str]:
+    obs = []
+    obs.append(f"Observations ingested: {len(observations)}.")
+    obs.append(f"Baselines built: {len(baselines)}.")
+    obs.append(f"Anomaly candidates detected: {len(anomalies)}.")
+    obs.append(f"Anomaly episodes clustered: {len(episodes)}.")
+    if any(b.get("quality", {}).get("confidence") in {"INSUFFICIENT", "LOW"} for b in baselines):
+        obs.append("Some baselines are weak; anomaly conclusions are correspondingly weak.")
+    if any(a.get("status") == "DATA_QUALITY_ISSUE" for a in anomalies):
+        obs.append("Data-quality issues explain some anomaly candidates.")
+    if any(a.get("status") == "SENSOR_FAULT_CANDIDATE" for a in anomalies):
+        obs.append("Sensor-fault candidates were separated from operational anomalies.")
+    if any(a.get("corroborating_signals") for a in anomalies):
+        obs.append("Independent-source corroboration was detected for some anomalies.")
+    if privacy_flags:
+        obs.append("Sensitive features/attributes were removed and not used as anomaly evidence.")
+    obs.append("No anomaly was converted into guilt, fraud, incident, malware, or malicious-intent verdict.")
+    return obs
+
+
+def build_unknowns(
+    baselines: List[Dict[str, Any]],
+    anomalies: List[Dict[str, Any]],
+    episodes: List[Dict[str, Any]],
+) -> List[str]:
+    unknowns = []
+    for b in baselines:
+        if b.get("quality", {}).get("confidence") in {"INSUFFICIENT", "LOW"}:
+            unknowns.append(f"Baseline {b['baseline_id']} quality insufficient for strong anomaly inference.")
+    for a in anomalies:
+        if a.get("status") in {"CANDIDATE", "UNRESOLVED", "VALIDATED_ANOMALY"}:
+            unknowns.append(f"Anomaly {a['anomaly_id']} cause unresolved: {a.get('status')}.")
+    for ep in episodes:
+        if ep.get("status") in {"UNRESOLVED", "ESCALATION_CANDIDATE"}:
+            unknowns.append(f"Episode {ep['episode_id']} root cause unresolved: {ep.get('status')}.")
+    unknowns.append("Account/operator/person identity remains unresolved unless separate authorized identity evidence exists.")
+    return list(dict.fromkeys(unknowns))[:500]
+
+
+def build_gaps(
+    baselines: List[Dict[str, Any]],
+    anomalies: List[Dict[str, Any]],
+    episodes: List[Dict[str, Any]],
+    privacy_flags: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    gaps = []
+
+    for b in baselines:
+        if b.get("quality", {}).get("confidence") in {"INSUFFICIENT", "LOW"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "baseline", b["baseline_id"]),
+                "type": "BASELINE_INSUFFICIENT",
+                "importance": "HIGH",
+                "baseline_id": b["baseline_id"],
+                "recommended_source": "Longer clean historical window, peer cohort, policy specification, or sensor calibration record.",
+                "specialist": "ANOMALYINT / LOGINT / DATA_STEWARD",
+                "expected_information_value": "Reduce false anomalies and improve calibration.",
+            })
+
+    for a in anomalies:
+        if a.get("status") == "DATA_QUALITY_ISSUE":
+            gaps.append({
+                "gap_id": stable_id("GAP", "dq", a["anomaly_id"]),
+                "type": "DATA_QUALITY_ISSUE",
+                "importance": "HIGH",
+                "anomaly_id": a["anomaly_id"],
+                "recommended_source": "Parser/schema validation, collector health, duplicate detection, unit normalization.",
+                "specialist": "LOGINT / DATA_STEWARD",
+                "expected_information_value": "Prevent telemetry artifacts from becoming operational anomalies.",
+            })
+        if a.get("status") == "SENSOR_FAULT_CANDIDATE":
+            gaps.append({
+                "gap_id": stable_id("GAP", "sensor", a["anomaly_id"]),
+                "type": "SENSOR_HEALTH_UNRESOLVED",
+                "importance": "HIGH",
+                "anomaly_id": a["anomaly_id"],
+                "recommended_source": "Sensor calibration log, adjacent sensor comparison, collector heartbeat.",
+                "specialist": "SENSORINT / LOGINT",
+                "expected_information_value": "Distinguish instrument fault from real-world change.",
+            })
+        if a.get("source_independence_state") in {"DEPENDENT", "UNKNOWN"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "indep", a["anomaly_id"]),
+                "type": "SOURCE_INDEPENDENCE_UNRESOLVED",
+                "importance": "MEDIUM",
+                "anomaly_id": a["anomaly_id"],
+                "recommended_source": "Source pedigree, upstream collector lineage, independent telemetry.",
+                "specialist": "ANOMALYINT / LOGINT",
+                "expected_information_value": "Prevent copied dashboards/pipelines from inflating confidence.",
+            })
+
+    for ep in episodes:
+        if ep.get("status") in {"UNRESOLVED", "ESCALATION_CANDIDATE"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "episode", ep["episode_id"]),
+                "type": "ROOT_CAUSE_UNRESOLVED",
+                "importance": "HIGH" if ep.get("severity") in {"HIGH_REVIEW", "CRITICAL_REVIEW"} else "MEDIUM",
+                "episode_id": ep["episode_id"],
+                "recommended_source": "Specialist domain evidence, independent telemetry, maintenance/change records, human review.",
+                "specialist": "ANOMALYINT / HUMAN_REVIEW",
+                "expected_information_value": "Move from anomaly candidate to validated explanation or specialist escalation.",
+            })
+
+    for pf in privacy_flags:
+        gaps.append({
+            "gap_id": stable_id("GAP", "privacy", pf.get("observation_id"), pf.get("type")),
+            "type": "SENSITIVE_DATA_EXCLUDED",
+            "importance": "HIGH",
+            "observation_id": pf.get("observation_id"),
+            "recommended_source": "Do not seek sensitive traits or private content unless exceptional lawful necessity and explicit policy permission.",
+            "specialist": "PRIVACY / HUMAN_REVIEW",
+            "expected_information_value": "Maintain privacy boundary.",
+        })
+
+    return gaps[:500]
+
+
+def build_next_actions(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    actions = []
+    priority_map = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+
+    for g in gaps:
+        if g["type"] == "BASELINE_INSUFFICIENT":
+            action = "Extend clean baseline window, exclude contaminated periods, and validate peer group before escalating anomalies."
+        elif g["type"] == "DATA_QUALITY_ISSUE":
+            action = "Check parser/schema, collector health, duplicate ingestion, unit normalization, and missing-data semantics."
+        elif g["type"] == "SENSOR_HEALTH_UNRESOLVED":
+            action = "Verify sensor calibration/heartbeat and compare adjacent independent sensors before operational escalation."
+        elif g["type"] == "SOURCE_INDEPENDENCE_UNRESOLVED":
+            action = "Trace source pedigree and obtain at least one independent telemetry source."
+        elif g["type"] == "ROOT_CAUSE_UNRESOLVED":
+            action = "Route to relevant specialist and request authorized human review; do not infer cause from score alone."
+        elif g["type"] == "SENSITIVE_DATA_EXCLUDED":
+            action = "Maintain privacy boundary; do not pursue sensitive traits or private content."
+        else:
+            action = "Gather additional authorized evidence."
+
+        actions.append({
+            "action": action,
+            "gap_id": g.get("gap_id"),
+            "priority": g.get("importance", "MEDIUM"),
+            "expected_information_value": g.get("expected_information_value"),
+            "prohibited_alternatives": [
+                "Do not autonomously accuse, punish, terminate, suspend, freeze, block, or blacklist.",
+                "Do not infer guilt, criminality, fraud verdict, malware verdict, or incident verdict from anomaly score.",
+                "Do not infer sensitive traits from behavior or anomalies.",
+                "Do not generate attack paths, chokepoints, sabotage plans, or evasion guidance.",
+                "Do not track private persons or perform unauthorized surveillance.",
+            ],
+        })
+
+    actions.sort(key=lambda x: priority_map.get(x.get("priority", "LOW"), 9))
+    return actions[:200]
+
+
+def build_handoffs(episodes: List[Dict[str, Any]], anomalies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    hands = []
+    seen = set()
+
+    for ep in episodes:
+        if ep.get("severity") not in {"MEDIUM_REVIEW", "HIGH_REVIEW", "CRITICAL_REVIEW"} and ep.get("status") not in {"ESCALATION_CANDIDATE", "UNRESOLVED"}:
+            continue
+        for domain in ep.get("domains", []):
+            spec = DOMAIN_HANDOFF.get(domain, DOMAIN_HANDOFF["unknown"])
+            key = (ep["episode_id"], spec)
+            if key in seen:
+                continue
+            seen.add(key)
+            hands.append({
+                "specialist": spec,
+                "reason": f"Anomaly episode {ep['episode_id']} requires {domain} specialist interpretation.",
+                "episode_id": ep["episode_id"],
+                "entity_display": ep.get("entity_display"),
+                "features": ep.get("features", []),
+                "time_window": {"start": iso(ep.get("start_utc")), "end": iso(ep.get("end_utc"))},
+                "severity": ep.get("severity"),
+                "status": ep.get("status"),
+                "payload": ["anomaly_ids", "baseline_ids", "evidence_ids", "source_ids", "known_facts", "benign_explanations", "unknowns", "limitations"],
+            })
+
+    for a in anomalies:
+        if a.get("status") == "DATA_QUALITY_ISSUE":
+            key = (a["anomaly_id"], "LOGINT / DATA_STEWARD")
+            if key not in seen:
+                seen.add(key)
+                hands.append({
+                    "specialist": "LOGINT / DATA_STEWARD",
+                    "reason": f"Anomaly {a['anomaly_id']} appears caused by data-quality issue.",
+                    "anomaly_id": a["anomaly_id"],
+                    "payload": ["observation_ids", "source_ids", "data_quality", "limitations"],
+                })
+
+    return hands[:200]
+
+
+class GraphMemory:
+    def __init__(self) -> None:
+        self.nodes: List[Dict[str, Any]] = []
+        self.edges: List[Dict[str, Any]] = []
+        self._node_ids: Set[str] = set()
+
+    def add_node(self, node_type: str, node_id: str, properties: Optional[Dict[str, Any]] = None) -> None:
+        if node_id in self._node_ids:
+            return
+        self._node_ids.add(node_id)
+        self.nodes.append({"type": node_type, "id": node_id, "properties": properties or {}})
+
+    def add_edge(self, from_id: str, to_id: str, edge_type: str, properties: Optional[Dict[str, Any]] = None) -> None:
+        self.edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": edge_type,
+            "properties": properties or {},
+        })
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "nodes": self.nodes[:2000],
+            "edges": self.edges[:4000],
+            "note": "Anomaly graph preserves baselines, deviations, context, hypotheses, and provenance. It does not prove guilt, fraud, incident, or malice.",
+        }
+
+
+def build_graph_memory(
+    observations: List[Dict[str, Any]],
+    baselines: List[Dict[str, Any]],
+    anomalies: List[Dict[str, Any]],
+    episodes: List[Dict[str, Any]],
+    contexts: List[Dict[str, Any]],
+    hypotheses: List[Dict[str, Any]],
+    gaps: List[Dict[str, Any]],
+) -> GraphMemory:
+    g = GraphMemory()
+
+    entity_ids = {o["entity_id"] for o in observations}
+    for eid in entity_ids:
+        g.add_node("Entity", eid, {"display": mask_entity(eid)})
+
+    for o in observations:
+        g.add_node("Observation", o["observation_id"], {
+            "entity_id": o["entity_id"],
+            "feature_id": o["feature_id"],
+            "timestamp": iso(o.get("timestamp")),
+            "value": o.get("raw_value"),
+            "data_quality": o.get("data_quality"),
+        })
+        g.add_edge(o["entity_id"], o["observation_id"], "OBSERVED_AS", {"feature_id": o["feature_id"]})
+
+    for b in baselines:
+        g.add_node("Baseline", b["baseline_id"], {
+            "entity_id": b["entity_id"],
+            "feature_id": b["feature_id"],
+            "type": b["baseline_type"],
+            "quality": b.get("quality", {}).get("confidence"),
+        })
+        g.add_edge(b["entity_id"], b["baseline_id"], "HAS_BASELINE", {"feature_id": b["feature_id"]})
+
+    for a in anomalies:
+        g.add_node("Anomaly", a["anomaly_id"], {
+            "entity_id": a["entity_id"],
+            "feature_id": a["feature_id"],
+            "type": a["anomaly_type"],
+            "status": a["status"],
+            "severity": a["severity"],
+            "score": a["score"],
+        })
+        g.add_edge(a["anomaly_id"], a["baseline_id"], "DEVIATES_FROM", {"method": a.get("score_method")})
+        g.add_edge(a["observation_id"], a["anomaly_id"], "EXHIBITED", {"confidence": a.get("confidence")})
+
+    for ep in episodes:
+        g.add_node("AnomalyEpisode", ep["episode_id"], {
+            "entity_id": ep["entity_id"],
+            "severity": ep["severity"],
+            "status": ep["status"],
+            "features": ep.get("features", []),
+        })
+        for aid in ep.get("anomaly_ids", [])[:100]:
+            g.add_edge(aid, ep["episode_id"], "CLUSTERED_WITH", {"episode": ep["episode_id"]})
+
+    for ctx in contexts:
+        g.add_node("ContextWindow", ctx["context_id"], {
+            "class": ctx.get("context_class"),
+            "type": ctx.get("context_type"),
+            "valid_from": iso(ctx.get("valid_from")),
+            "valid_to": iso(ctx.get("valid_to")),
+        })
+
+    for h in hypotheses[:500]:
+        g.add_node("Hypothesis", h["hypothesis_id"], {
+            "statement": h["statement"],
+            "category": h["category"],
+            "episode_id": h.get("episode_id"),
+        })
+
+    for gap in gaps[:500]:
+        g.add_node("Gap", gap["gap_id"], {
+            "type": gap["type"],
+            "importance": gap["importance"],
+        })
+
+    return g
+
+
+def dual_ai_review_stub(
+    anomalies: List[Dict[str, Any]],
+    baselines: List[Dict[str, Any]],
+    episodes: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    review = {
+        "status": "INSUFFICIENT_EVIDENCE",
+        "primary_conclusions": [],
+        "skeptic_challenges": [],
+        "comparison": "NO_SECOND_MODEL_CONFIGURED",
+        "notes": [
+            "This starter does not call an independent second model.",
+            "AI agreement is not independent telemetry or ground truth.",
+            "Human review is required for consequential escalation.",
+        ],
+    }
+    if any(b.get("quality", {}).get("confidence") in {"INSUFFICIENT", "LOW"} for b in baselines):
+        review["primary_conclusions"].append("Some baselines are weak.")
+        review["skeptic_challenges"].append("Do not escalate anomalies from weak baselines without independent context.")
+    if any(a.get("status") == "DATA_QUALITY_ISSUE" for a in anomalies):
+        review["primary_conclusions"].append("Some anomalies are data-quality candidates.")
+        review["skeptic_challenges"].append("Check parser, collector, duplicates, units, and missing-data semantics before operational interpretation.")
+    if any(ep.get("status") == "ESCALATION_CANDIDATE" for ep in episodes):
+        review["primary_conclusions"].append("Some episodes are escalation candidates.")
+        review["skeptic_challenges"].append("Escalation candidate is not incident/fraud/malice verdict; require specialist and human review.")
+    if review["primary_conclusions"]:
+        review["status"] = "PARTIAL_AGREEMENT"
+    return review
+
+
+# --------------------------------------------------------------------
+# Result assembly
+# --------------------------------------------------------------------
+
+def empty_result(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "case_id": manifest.get("case_id", "CASE-UNKNOWN"),
+        "task_id": manifest.get("task_id", "TASK-UNKNOWN"),
+        "objective": manifest.get("objective", ""),
+        "questions": manifest.get("questions", []) or [],
+        "generated_at": utc_now(),
+        "version": VERSION,
+        "source_ids": [],
+        "evidence_ids": [],
+        "entities": [],
+        "features": [],
+        "observations": [],
+        "baselines": [],
+        "baseline_quality": [],
+        "anomalies": [],
+        "anomaly_episodes": [],
+        "anomaly_types": [],
+        "anomaly_statuses": [],
+        "anomaly_scores": [],
+        "data_quality": [],
+        "sensor_health": [],
+        "known_events": [],
+        "maintenance_context": [],
+        "benign_explanations": [],
+        "root_cause_candidates": [],
+        "source_pedigree": [],
+        "source_independence": [],
+        "corroborating_signals": [],
+        "contradicting_signals": [],
+        "hypotheses": [],
+        "ach_matrix": [],
+        "falsification_results": [],
+        "specialist_routes": [],
+        "supported_facts": [],
+        "partial_facts": [],
+        "disputed_facts": [],
+        "privacy_flags": [],
+        "unknowns": [],
+        "knowledge_gaps": [],
+        "recommended_next_actions": [],
+        "specialist_handoffs": [],
+        "limitations": [],
+        "dual_ai_review": {},
+        "graph_memory": {},
+        "status": "PARTIAL",
+    }
+
+
+def summarize_observation(o: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "observation_id": o["observation_id"],
+        "entity_display": mask_entity(o["entity_id"]),
+        "entity_type": o.get("entity_type"),
+        "feature_id": o["feature_id"],
+        "timestamp": iso(o.get("timestamp")),
+        "raw_value": o.get("raw_value"),
+        "unit": o.get("unit"),
+        "target_display": mask_entity(o.get("target_entity")) if o.get("target_entity") else None,
+        "source_id": o.get("source_id"),
+        "source_type": o.get("source_type"),
+        "data_quality": o.get("data_quality"),
+        "issues": o.get("issues", []),
+        "duplicate_count": o.get("duplicate_count", 0),
+        "evidence_ids": o.get("evidence_ids", []),
+    }
+
+
+def summarize_baseline(b: Dict[str, Any]) -> Dict[str, Any]:
+    stats = b.get("stats", {})
+    return {
+        "baseline_id": b["baseline_id"],
+        "baseline_type": b["baseline_type"],
+        "entity_display": mask_entity(b["entity_id"]),
+        "feature_id": b["feature_id"],
+        "peer_group_id": b.get("peer_group_id"),
+        "training_start": iso(b.get("training_start")),
+        "training_end": iso(b.get("training_end")),
+        "sample_count": b.get("sample_count"),
+        "model_type": b.get("model_type"),
+        "expected_range": b.get("expected_range"),
+        "median": stats.get("median"),
+        "mad": stats.get("mad"),
+        "std": stats.get("std"),
+        "iqr": stats.get("iqr"),
+        "p05": stats.get("p05"),
+        "p95": stats.get("p95"),
+        "trend_slope": stats.get("trend_slope"),
+        "categorical_categories": b.get("categorical_stats", {}).get("categories", [])[:50],
+        "target_sample": b.get("target_stats", {}).get("targets", [])[:50],
+        "quality": b.get("quality", {}),
+        "evaluation_observation_count": len(b.get("evaluation_observation_ids", [])),
+        "limitations": b.get("limitations", []),
+    }
+
+
+def summarize_anomaly(a: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(a)
+    out["timestamp"] = iso(a.get("timestamp"))
+    out.pop("entity_id", None)
+    return out
+
+
+def summarize_episode(ep: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(ep)
+    out["start_utc"] = iso(ep.get("start_utc"))
+    out["end_utc"] = iso(ep.get("end_utc"))
+    out.pop("entity_id", None)
+    return out
+
+
+def finalize_status(
+    result: Dict[str, Any],
+    observations: List[Dict[str, Any]],
+    anomalies: List[Dict[str, Any]],
+    auth_ok: bool,
+    policy_blocked: List[str],
+) -> str:
+    if policy_blocked:
+        return "POLICY_BLOCKED"
+    if not auth_ok:
+        return "BLOCKED_PERMISSION"
+    if not observations:
+        return "INSUFFICIENT_INPUT"
+    if any(a.get("status") in {"CANDIDATE", "UNRESOLVED", "ESCALATION_CANDIDATE"} for a in anomalies):
+        return "PARTIAL"
+    if result.get("knowledge_gaps"):
+        return "PARTIAL"
+    return "SUCCEEDED"
+
+
+def analyze_anomaly_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    result = empty_result(manifest)
+
+    policy_blocked = policy_screen(manifest)
+    if policy_blocked:
+        result["status"] = "POLICY_BLOCKED"
+        result["violations"] = policy_blocked
+        result["privacy_flags"] = [{"type": label, "action": "PROHIBITED_REQUEST_NOT_PERFORMED"} for label in policy_blocked]
+        result["limitations"] = [
+            "ANOMALYINT does not autonomously accuse, punish, freeze, block, infer sensitive traits, perform surveillance, or optimize attacks."
+        ]
+        return result
+
+    auth_ok, auth_reasons = authorization_check(manifest)
+    if not auth_ok:
+        result["status"] = "BLOCKED_PERMISSION"
+        result["limitations"] = auth_reasons
+        return result
+
+    privacy_cfg = privacy_config(manifest)
+    thresholds = threshold_settings(manifest)
+
+    sources = ingest_sources(manifest)
+    source_roots = build_source_roots(sources)
+    features = ingest_features(manifest)
+    entities = ingest_entities(manifest)
+    contexts = all_contexts(manifest)
+
+    observations, privacy_flags = ingest_observations(manifest, sources, features, entities, privacy_cfg)
+    observations = deduplicate_observations(observations)
+    sensor_fault_obs_ids = detect_data_quality_issues(observations, features)
+
+    if not observations:
+        result["status"] = "INSUFFICIENT_INPUT"
+        result["limitations"].append("No usable observations provided.")
+        return result
+
+    baselines = build_baselines(observations, features, manifest, contexts)
+    anomalies = detect_anomalies(observations, baselines, features, sources, source_roots, thresholds)
+
+    enrich_with_context(anomalies, observations, contexts, sensor_fault_obs_ids)
+    enrich_corroboration_and_contradictions(anomalies, observations, sources, source_roots, thresholds)
+    enrich_persistence_and_recurrence(anomalies, thresholds)
+
+    episodes = build_episodes(anomalies, thresholds)
+
+    all_hypotheses = []
+    ach_results = []
+    for ep in episodes:
+        hyps, review = evaluate_ach_for_episode(ep, thresholds)
+        all_hypotheses.extend(hyps)
+        ach_results.append(review)
+        ep["status"] = review["status"]
+        ep["ach_scores"] = review["scores"]
+
+    observations_summary = build_observations_summary(observations, baselines, anomalies, episodes, privacy_flags)
+    unknowns = build_unknowns(baselines, anomalies, episodes)
+    gaps = build_gaps(baselines, anomalies, episodes, privacy_flags)
+    actions = build_next_actions(gaps)
+    handoffs = build_handoffs(episodes, anomalies)
+    dual_review = dual_ai_review_stub(anomalies, baselines, episodes)
+    graph = build_graph_memory(observations, baselines, anomalies, episodes, contexts, all_hypotheses, gaps)
+
+    result["observations"] = [summarize_observation(o) for o in observations]
+    result["baselines"] = [summarize_baseline(b) for b in baselines]
+    result["baseline_quality"] = [{"baseline_id": b["baseline_id"], "quality": b.get("quality", {})} for b in baselines]
+    result["anomalies"] = [summarize_anomaly(a) for a in anomalies]
+    result["anomaly_episodes"] = [summarize_episode(ep) for ep in episodes]
+    result["anomaly_types"] = [{"anomaly_id": a["anomaly_id"], "type": a["anomaly_type"]} for a in anomalies]
+    result["anomaly_statuses"] = [{"anomaly_id": a["anomaly_id"], "status": a["status"], "severity": a["severity"]} for a in anomalies]
+    result["anomaly_scores"] = [{"anomaly_id": a["anomaly_id"], "score": a["score"], "method": a["score_method"]} for a in anomalies]
+    result["data_quality"] = [{"observation_id": o["observation_id"], "data_quality": o.get("data_quality"), "issues": o.get("issues", [])} for o in observations if o.get("issues") or o.get("data_quality") not in {"OK"}]
+    result["sensor_health"] = [{"observation_id": oid, "issue": "SENSOR_FLATLINE"} for oid in sorted(sensor_fault_obs_ids)]
+    result["known_events"] = [c for c in contexts if c.get("context_class") == "known_event"]
+    result["maintenance_context"] = [c for c in contexts if c.get("context_class") == "maintenance"]
+    result["benign_explanations"] = [{"anomaly_id": a["anomaly_id"], "explanations": a.get("possible_explanations", [])} for a in anomalies if a.get("possible_explanations")]
+    result["root_cause_candidates"] = [{"episode_id": ep["episode_id"], "candidates": ep.get("root_cause_candidates", [])} for ep in episodes]
+    result["corroborating_signals"] = [{"anomaly_id": a["anomaly_id"], "signals": a.get("corroborating_signals", [])} for a in anomalies if a.get("corroborating_signals")]
+    result["contradicting_signals"] = [{"anomaly_id": a["anomaly_id"], "signals": a.get("contradicting_signals", [])} for a in anomalies if a.get("contradicting_signals")]
+    result["hypotheses"] = all_hypotheses
+    result["ach_matrix"] = ach_results
+    result["falsification_results"] = [
+        {
+            "episode_id": r["episode_id"],
+            "status": r["status"],
+            "scores": r.get("scores"),
+            "limitations": r.get("limitations"),
+        }
+        for r in ach_results
+    ]
+    result["specialist_routes"] = handoffs
+    result["specialist_handoffs"] = handoffs
+    result["observations"] = result["observations"]
+    result["unknowns"] = unknowns
+    result["knowledge_gaps"] = gaps
+    result["recommended_next_actions"] = actions
+    result["dual_ai_review"] = dual_review
+    result["graph_memory"] = graph.to_dict()
+    result["privacy_flags"] = privacy_flags
+    result["analyst_summary"] = observations_summary
+
+    for sid, src in sources.items():
+        result["source_ids"].append(sid)
+        result["source_pedigree"].append({
+            "source_id": sid,
+            "source_type": src.get("source_type"),
+            "upstream_source_id": src.get("upstream_source_id"),
+            "root_source_id": source_roots.get(sid, sid),
+            "reliability": src.get("reliability"),
+        })
+
+    for o in observations:
+        for evid in o.get("evidence_ids", []):
+            result["evidence_ids"].append(evid)
+
+    for a in anomalies:
+        result["source_independence"].append({
+            "anomaly_id": a["anomaly_id"],
+            "state": a.get("source_independence_state"),
+            "independent_source_family_count": a.get("independent_source_family_count"),
+        })
+        if a.get("status") in {"VALIDATED_ANOMALY", "BENIGN_EXPLAINED", "CONTEXT_EXPLAINED", "RELATED_TO_KNOWN_EVENT"}:
+            result["supported_facts"].append({"anomaly_id": a["anomaly_id"], "statement": f"Anomaly {a['anomaly_id']} status: {a['status']}."})
+        elif a.get("status") == "DATA_QUALITY_ISSUE":
+            result["disputed_facts"].append({"anomaly_id": a["anomaly_id"], "statement": f"Anomaly {a['anomaly_id']} disputed by data-quality issue."})
+        else:
+            result["partial_facts"].append({"anomaly_id": a["anomaly_id"], "statement": f"Anomaly {a['anomaly_id']} candidate."})
+
+    base_limits = [
+        "ANOMALYINT starter uses only provided/local authorized records; no external network lookup was performed.",
+        "Anomaly means deviation from a baseline, not malice, fraud, incident, compromise, or criminality.",
+        "Model/statistical score is an analytical signal, not fact.",
+        "Weak, stale, contaminated, or insufficient baselines produce weak anomaly conclusions.",
+        "Data-quality issues and sensor faults are separated from operational anomalies where evidence supports.",
+        "Dependent/copied telemetry is not independent corroboration.",
+        "Correlation is not causation; root-cause candidates require specialist/human verification.",
+        "No autonomous accusation, punitive action, attack optimization, sensitive-trait inference, or private tracking was performed.",
+    ]
+    if auth_reasons:
+        base_limits.extend(auth_reasons)
+    result["limitations"] = list(dict.fromkeys(base_limits))
+
+    result["status"] = finalize_status(result, observations, anomalies, auth_ok, policy_blocked)
+    return result
+
+
+# --------------------------------------------------------------------
+# Report generation
+# --------------------------------------------------------------------
+
+def generate_report(result: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("# ANOMALYINT Evidence-Linked Report")
+    lines.append("")
+    lines.append(f"- Case ID: `{result.get('case_id')}`")
+    lines.append(f"- Task ID: `{result.get('task_id')}`")
+    lines.append(f"- Generated: `{result.get('generated_at')}`")
+    lines.append(f"- Version: `{result.get('version')}`")
+    lines.append(f"- Status: `{result.get('status')}`")
+    lines.append("")
+
+    if result.get("status") == "POLICY_BLOCKED":
+        lines.append("## POLICY BLOCKED")
+        lines.append("The request violated ANOMALYINT hard restrictions:")
+        for v in result.get("violations", []):
+            lines.append(f"- `{v}`")
+        lines.append("")
+        lines.append("No anomaly analysis was performed.")
+        return "\n".join(lines)
+
+    lines.append("## Objective")
+    lines.append(str(result.get("objective", "")))
+    lines.append("")
+
+    lines.append("## Required Analyst Summary")
+    for s in result.get("analyst_summary", [])[:50]:
+        lines.append(f"- {s}")
+    lines.append("")
+
+    lines.append("## Privacy / Anomaly Boundaries")
+    lines.append("- Deviation ≠ anomaly verdict; anomaly ≠ threat; threat ≠ incident; incident ≠ attributed actor.")
+    lines.append("- No autonomous accusation, punishment, termination, suspension, freezing, blocking, or blacklisting.")
+    lines.append("- No sensitive-trait inference, biometric identification, private tracking, or surveillance.")
+    lines.append("- No attack-path, chokepoint, sabotage, or evasion optimization.")
+    lines.append("- Anomaly score is analytical signal, not fact.")
+    lines.append("")
+
+    lines.append("## Data Quality / Sensor Health")
+    dq = result.get("data_quality", [])
+    sh = result.get("sensor_health", [])
+    lines.append(f"- Data-quality flagged observations: {len(dq)}")
+    lines.append(f"- Sensor-fault candidate observations: {len(sh)}")
+    for d in dq[:100]:
+        lines.append(f"- `{d.get('observation_id')}` quality=`{d.get('data_quality')}` issues={d.get('issues')}")
+    for s in sh[:100]:
+        lines.append(f"- `{s.get('observation_id')}`: {s.get('issue')}")
+    lines.append("")
+
+    lines.append("## Baselines")
+    for b in result.get("baselines", [])[:200]:
+        q = b.get("quality", {})
+        lines.append(f"### `{b.get('baseline_id')}`")
+        lines.append(f"- Entity: `{b.get('entity_display')}` feature=`{b.get('feature_id')}` type=`{b.get('baseline_type')}`")
+        lines.append(f"- Training: `{b.get('training_start')}` to `{b.get('training_end')}` sample=`{b.get('sample_count')}`")
+        lines.append(f"- Expected range: `{b.get('expected_range')}`")
+        lines.append(f"- Median=`{b.get('median')}` MAD=`{b.get('mad')}` std=`{b.get('std')}` IQR=`{b.get('iqr')}`")
+        lines.append(f"- Quality: `{q.get('confidence')}` completeness=`{q.get('data_completeness')}` contamination={q.get('contamination_contexts')}")
+        lines.append("")
+
+    lines.append("## Anomalies")
+    for a in result.get("anomalies", [])[:300]:
+        lines.append(f"### `{a.get('anomaly_id')}`")
+        lines.append(f"- Entity: `{a.get('entity_display')}` feature=`{a.get('feature_id')}` domain=`{a.get('domain')}`")
+        lines.append(f"- Type: `{a.get('anomaly_type')}` status=`{a.get('status')}` severity=`{a.get('severity')}` confidence=`{a.get('confidence')}`")
+        lines.append(f"- Observed: `{a.get('observed_value')}` expected_range=`{a.get('expected_range')}` deviation=`{a.get('deviation')}`")
+        lines.append(f"- Score: `{a.get('score')}` method={a.get('score_method')} threshold=`{a.get('threshold')}`")
+        lines.append(f"- Baseline: `{a.get('baseline_id')}` type=`{a.get('baseline_type')}`")
+        lines.append(f"- Source independence: `{a.get('source_independence_state')}` independent_families=`{a.get('independent_source_family_count')}`")
+        if a.get("corroborating_signals"):
+            lines.append(f"- Corroborating signals: {', '.join(a['corroborating_signals'])}")
+        if a.get("contradicting_signals"):
+            lines.append(f"- Contradicting signals: {', '.join(a['contradicting_signals'])}")
+        if a.get("possible_explanations"):
+            lines.append("- Possible explanations:")
+            for exp in a["possible_explanations"][:10]:
+                lines.append(f"  - {exp}")
+        lines.append("")
+
+    lines.append("## Anomaly Episodes")
+    for ep in result.get("anomaly_episodes", [])[:200]:
+        lines.append(f"### `{ep.get('episode_id')}`")
+        lines.append(f"- Entity: `{ep.get('entity_display')}`")
+        lines.append(f"- Window: `{ep.get('start_utc')}` to `{ep.get('end_utc')}`")
+        lines.append(f"- Features: {', '.join(ep.get('features', []))}")
+        lines.append(f"- Severity: `{ep.get('severity')}` status: `{ep.get('status')}` multivariate=`{ep.get('multivariate_context')}`")
+        lines.append(f"- Root-cause candidates: {', '.join(ep.get('root_cause_candidates', []))}")
+        lines.append(f"- ACH scores: `{json.dumps(ep.get('ach_scores', {}), ensure_ascii=False)}`")
+        lines.append("")
+
+    lines.append("## Hypotheses / ACH")
+    for r in result.get("ach_matrix", [])[:100]:
+        lines.append(f"### Episode `{r.get('episode_id')}` status=`{r.get('status')}`")
+        for ev in r.get("evidence", [])[:20]:
+            lines.append(f"- Evidence `{ev.get('evidence_id')}` [{ev.get('type')}]: {ev.get('description')}")
+        for row in r.get("matrix", [])[:20]:
+            lines.append(f"  - {row.get('evidence_id')}: {json.dumps(row.get('assessments', {}), ensure_ascii=False)}"[:700])
+    lines.append("")
+
+    lines.append("## Knowledge Gaps")
+    for g in result.get("knowledge_gaps", [])[:200]:
+        lines.append(f"- `{g.get('gap_id')}` [{g.get('importance')}] {g.get('type')}: {g.get('recommended_source')}")
+    lines.append("")
+
+    lines.append("## Recommended Next Actions")
+    for a in result.get("recommended_next_actions", [])[:200]:
+        lines.append(f"- [{a.get('priority')}] {a.get('action')}")
+    lines.append("")
+
+    lines.append("## Specialist Handoffs")
+    for h in result.get("specialist_handoffs", []):
+        lines.append(f"- {h.get('specialist')}: {h.get('reason')}")
+    lines.append("")
+
+    lines.append("## Dual-AI Review Stub")
+    dr = result.get("dual_ai_review", {})
+    lines.append(f"- Status: `{dr.get('status')}`")
+    lines.append(f"- Comparison: `{dr.get('comparison')}`")
+    for n in dr.get("notes", []):
+        lines.append(f"- {n}")
+    for c in dr.get("primary_conclusions", [])[:50]:
+        lines.append(f"- Primary: {c}")
+    for c in dr.get("skeptic_challenges", [])[:50]:
+        lines.append(f"- Skeptic: {c}")
+    lines.append("")
+
+    lines.append("## Limitations")
+    for lim in result.get("limitations", []):
+        lines.append(f"- {lim}")
+    lines.append("")
+
+    lines.append("## Non-Negotiable Boundary")
+    lines.append("- Check the data.")
+    lines.append("- Check the sensor.")
+    lines.append("- Check the clock.")
+    lines.append("- Check the baseline.")
+    lines.append("- Check the season and peer group.")
+    lines.append("- Measure deviation transparently.")
+    lines.append("- Test benign explanations before serious hypotheses.")
+    lines.append("- Escalate context, not just score.")
+    lines.append("- Attribute cause last, with specialist and human review.")
+
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------
+# CLI
+# --------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="TRACEATLAS ANOMALYINT safe starter")
+    parser.add_argument("--manifest", required=True, help="Path to ANOMALYINT manifest JSON")
+    parser.add_argument("--output", default="anomalyint_result.json", help="Output JSON path")
+    parser.add_argument("--report", default="anomalyint_report.md", help="Output Markdown report path")
+    args = parser.parse_args()
+
+    try:
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"ERROR reading manifest: {exc}", file=sys.stderr)
+        return 2
+
+    result = analyze_anomaly_manifest(manifest)
+
+    Path(args.output).write_text(
+        json.dumps(json_safe(result), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    Path(args.report).write_text(generate_report(result), encoding="utf-8")
+
+    print(f"Wrote: {args.output}")
+    print(f"Wrote: {args.report}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

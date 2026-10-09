@@ -1,0 +1,3678 @@
+#!/usr/bin/env python3
+"""
+TRACEATLAS ACADEMICINT — Safe Python Starter Implementation
+
+Purpose:
+  Evidence-first academic / research ecosystem intelligence pipeline.
+
+Hard boundaries enforced in code:
+  - Does NOT fabricate papers, authors, DOIs, citations, datasets, experiments,
+    results, peer review, ethics approvals, credentials, or certificates.
+  - Does NOT enable plagiarism, paraphrase-to-evade-detection, paper mills,
+    fake theses, fabricated experimental records, or manufactured statistics.
+  - Does NOT manipulate peer review, generate fake reviewers, create citation
+    rings, coordinate coercive citation, or dishonestly inflate metrics.
+  - Does NOT bypass paywalls, use stolen university/library credentials,
+    pirate restricted papers, or access private lab systems.
+  - Does NOT deanonymize private reviewers, dox researchers, harass academics,
+    or infer sensitive personal traits/ideology without lawful justification.
+  - Does NOT provide exam cheating, assignment solutions, or ghostwriting.
+  - Treats publications, abstracts, metadata, and researcher pages as evidence,
+    not automatic truth.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import sys
+import unicodedata
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+VERSION = "0.1.0-academicint-safe-starter"
+FAR_FUTURE = datetime(9999, 12, 31, tzinfo=timezone.utc)
+
+# --------------------------------------------------------------------
+# Policy / authorization constants
+# --------------------------------------------------------------------
+
+ALLOWED_SCOPES = {
+    "public_and_authorized_records",
+    "authorized_case_evidence",
+    "authorized_scholarly_sources",
+    "provided_records_only",
+}
+
+PROHIBITED_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"(?i)\b(fabricate|invent|make up|generate|create)\s+"
+            r"(paper|publication|citation|doi|dataset|experiment|result|peer review|ethics approval|thesis|credential|certificate)\b"
+        ),
+        "SCHOLARLY_FABRICATION_REQUEST",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(plagiariz|copy verbatim|paraphras.*evad.*plagiarism|spin.?author|paper.?mill|ghostwrit)\b"
+        ),
+        "PLAGIARISM_OR_PAPER_MILL_ENABLEMENT",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(manipulat.*peer review|fake reviewer|review ring|coercive citation|citation ring|inflate h-index|game citation|citation manipulation)\b"
+        ),
+        "PEER_REVIEW_OR_CITATION_MANIPULATION",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(bypass|break|evade|defeat)\s+"
+            r"(paywall|publisher authentication|access control|library login|university credential|institutional access)\b"
+        ),
+        "ACCESS_CONTROL_BYPASS",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(use|leverate|login with|authenticate with)\s+"
+            r"(stolen|leaked|shared|borrowed)\s+(credential|password|token|library access|university login|vpn)\b"
+        ),
+        "STOLEN_CREDENTIAL_USE",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(pirate|download illegally|unauthorized copy|sci-hub-like)\s+(paper|article|pdf|research|publication)\b"
+        ),
+        "PAPERY_PIRACY_REQUEST",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(deanonymi[sz]e|identify|unmask|discover)\s+"
+            r"(anonymous|blind|private|confidential)\s+(peer reviewer|reviewer)\b"
+        ),
+        "REVIEWER_DEANONYMIZATION",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(dox|harass|threaten|home address|private email|personal phone|family information)\b.*"
+            r"\b(researcher|author|academic|reviewer|student)\b"
+        ),
+        "RESEARCHER_DOXXING_OR_HARASSMENT",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(infer|guess|profile|determine)\s+"
+            r"(religion|ethnicity|sexual orientation|political belief|ideology|medical condition)\b.*"
+            r"\b(researcher|author|academic|reviewer)\b"
+        ),
+        "UNJUSTIFIED_SENSITIVE_TRAIT_INFERENCE",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(cheat|exam answer|assignment solution|contract cheating|ghostwrite|write my thesis)\b"
+        ),
+        "EXAM_OR_ASSIGNMENT_CHEATING",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(access|enter|steal|exfiltrate)\s+"
+            r"(private lab|unpublished research|internal lab system|pre-submission manuscript)\b"
+        ),
+        "UNAUTHORIZED_RESEARCH_ACCESS",
+    ),
+]
+
+SOURCE_RELIABILITY: Dict[str, float] = {
+    "version_of_record": 0.92,
+    "doi_registry": 0.90,
+    "official_publisher": 0.88,
+    "institutional_repository": 0.84,
+    "government_research_database": 0.84,
+    "clinical_trial_registry": 0.82,
+    "preprint_server": 0.78,
+    "bibliographic_index": 0.72,
+    "data_repository": 0.72,
+    "code_repository": 0.70,
+    "author_profile": 0.65,
+    "university_page": 0.68,
+    "lab_page": 0.62,
+    "grant_database": 0.78,
+    "retraction_database": 0.82,
+    "media_summary": 0.45,
+    "secondary_review": 0.55,
+    "anonymous_post": 0.15,
+    "unknown": 0.30,
+}
+
+HIGH_AUTHORITY_SOURCE_TYPES = {
+    "version_of_record",
+    "doi_registry",
+    "official_publisher",
+    "institutional_repository",
+    "government_research_database",
+    "clinical_trial_registry",
+    "grant_database",
+    "retraction_database",
+}
+
+PUBLICATION_TYPES = {
+    "JOURNAL_ARTICLE",
+    "CONFERENCE_PAPER",
+    "PREPRINT",
+    "WORKING_PAPER",
+    "TECHNICAL_REPORT",
+    "THESIS",
+    "DISSERTATION",
+    "BOOK",
+    "BOOK_CHAPTER",
+    "REVIEW",
+    "SYSTEMATIC_REVIEW",
+    "META_ANALYSIS",
+    "CASE_REPORT",
+    "DATA_PAPER",
+    "METHODS_PAPER",
+    "PROTOCOL",
+    "EDITORIAL",
+    "LETTER",
+    "POSTER",
+    "OTHER",
+    "UNKNOWN",
+}
+
+VERSION_STATES = {
+    "SUBMITTED_MANUSCRIPT",
+    "PREPRINT",
+    "ACCEPTED_MANUSCRIPT",
+    "AUTHOR_ACCEPTED_VERSION",
+    "PROOF",
+    "VERSION_OF_RECORD",
+    "REVISED_VERSION",
+    "CORRECTED_VERSION",
+    "WITHDRAWN",
+    "RETRACTED",
+    "UNKNOWN",
+}
+
+PEER_REVIEW_STATES = {
+    "PEER_REVIEWED_REPORTED",
+    "EDITORIALLY_REVIEWED",
+    "PREPRINT",
+    "UNDER_REVIEW",
+    "ACCEPTED",
+    "UNKNOWN",
+}
+
+PUBLICATION_STATUSES = {
+    "ACTIVE",
+    "CORRECTED",
+    "RETRACTED",
+    "WITHDRAWN",
+    "EXPRESSION_OF_CONCERN",
+    "SUPERSEDED",
+    "UNKNOWN",
+}
+
+CLAIM_TYPES = {
+    "DESCRIPTIVE",
+    "ASSOCIATIONAL",
+    "CORRELATIONAL",
+    "CAUSAL",
+    "MECHANISTIC",
+    "PREDICTIVE",
+    "COMPARATIVE",
+    "NEGATIVE_RESULT",
+    "METHODOLOGICAL",
+    "THEORETICAL",
+    "SPECULATIVE",
+    "UNKNOWN",
+}
+
+STUDY_DESIGNS = {
+    "RCT",
+    "COHORT",
+    "CASE_CONTROL",
+    "CROSS_SECTIONAL",
+    "LONGITUDINAL",
+    "CASE_SERIES",
+    "SURVEY",
+    "EXPERIMENT",
+    "SIMULATION",
+    "BENCHMARK",
+    "OBSERVATIONAL",
+    "QUALITATIVE",
+    "MIXED_METHODS",
+    "SYSTEMATIC_REVIEW",
+    "META_ANALYSIS",
+    "OTHER",
+    "UNKNOWN",
+}
+
+CITATION_PURPOSES = {
+    "SUPPORT",
+    "BACKGROUND",
+    "METHOD",
+    "CONTRAST",
+    "CRITICISM",
+    "EXTENSION",
+    "REPLICATION",
+    "DATA_SOURCE",
+    "UNKNOWN",
+}
+
+REPLICATION_DIRECTIONS = {
+    "SUPPORTS",
+    "PARTIAL_SUPPORTS",
+    "CONTRADICTS",
+    "NULL",
+    "INCONCLUSIVE",
+    "UNKNOWN",
+}
+
+CONSENSUS_STATES = {
+    "STRONG_CONSENSUS",
+    "MODERATE_CONSENSUS",
+    "EMERGING_CONSENSUS",
+    "MIXED_EVIDENCE",
+    "ACTIVE_DEBATE",
+    "WEAK_EVIDENCE",
+    "INSUFFICIENT_EVIDENCE",
+    "UNKNOWN",
+}
+
+# --------------------------------------------------------------------
+# Generic helpers
+# --------------------------------------------------------------------
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def stable_id(prefix: str, *parts: Any) -> str:
+    raw = "|".join(str(json_safe(p)) for p in parts)
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}-{digest}"
+
+
+def json_safe(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {str(k): json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [json_safe(x) for x in obj]
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, timedelta):
+        return obj.total_seconds()
+    if isinstance(obj, bytes):
+        return obj.hex()
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    return str(obj)
+
+
+def normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    s = unicodedata.normalize("NFKC", str(value))
+    s = re.sub(r"[\u200b\u200c\u200d\u2060\ufeff]", "", s)
+    return s.strip()
+
+
+def collapse_ws(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def iso(dt: Optional[datetime]) -> Optional[str]:
+    return dt.isoformat() if isinstance(dt, datetime) else None
+
+
+def clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, value))
+
+
+def unique_preserve(items: Iterable[Any]) -> List[Any]:
+    seen = set()
+    out = []
+    for item in items:
+        key = json_safe(item)
+        if isinstance(key, (dict, list)):
+            key = json.dumps(key, sort_keys=True, ensure_ascii=False)
+        if key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def add_unique(lst: List[Any], item: Any) -> None:
+    if item is None:
+        return
+    key = json_safe(item)
+    if isinstance(key, (dict, list)):
+        key = json.dumps(key, sort_keys=True, ensure_ascii=False)
+    for existing in lst:
+        ex_key = json_safe(existing)
+        if isinstance(ex_key, (dict, list)):
+            ex_key = json.dumps(ex_key, sort_keys=True, ensure_ascii=False)
+        if ex_key == key:
+            return
+    lst.append(item)
+
+
+def parse_time(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    s = normalize_text(value)
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        pass
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y-%m",
+        "%Y",
+    ):
+        try:
+            dt = datetime.strptime(s, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            continue
+    return None
+
+
+def sha256_hex(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def mask_value(value: Any, keep_prefix: int = 3, keep_suffix: int = 2) -> str:
+    s = normalize_text(value)
+    if not s:
+        return ""
+    if len(s) <= keep_prefix + keep_suffix:
+        return "*" * len(s)
+    return s[:keep_prefix] + "*" * (len(s) - keep_prefix - keep_suffix) + s[-keep_suffix:]
+
+
+def source_list(*items: Any) -> List[str]:
+    out = []
+    for it in items:
+        if it is None:
+            continue
+        if isinstance(it, list):
+            out.extend(normalize_text(x) for x in it if normalize_text(x))
+        else:
+            s = normalize_text(it)
+            if s:
+                out.append(s)
+    return list(dict.fromkeys(out))
+
+
+# --------------------------------------------------------------------
+# Academic normalizers
+# --------------------------------------------------------------------
+
+def normalize_doi(value: Any) -> Optional[str]:
+    s = normalize_text(value)
+    if not s:
+        return None
+    s = re.sub(r"(?i)^https?://(dx\.)?doi\.org/", "", s)
+    s = re.sub(r"(?i)^doi:\s*", "", s)
+    s = s.strip().lower()
+    if re.fullmatch(r"10\.\d{4,9}/[^\s]+", s):
+        return s
+    return None
+
+
+def parse_orcid(value: Any) -> Tuple[Optional[str], bool]:
+    s = normalize_text(value)
+    if not s:
+        return None, False
+    s = re.sub(r"(?i)^https?://orcid\.org/", "", s)
+    s = re.sub(r"[^0-9Xx]", "", s)
+    if len(s) != 16:
+        return (s.upper() if s else None), False
+    su = s.upper()
+    total = 0
+    for ch in su[:-1]:
+        if not ch.isdigit():
+            return su, False
+        total = (total + int(ch)) * 2
+    rem = total % 11
+    expected = (12 - rem) % 11
+    expected_char = "X" if expected == 10 else str(expected)
+    return su, su[-1] == expected_char
+
+
+def normalize_issn(value: Any) -> Optional[str]:
+    s = normalize_text(value).upper().replace(" ", "")
+    s = re.sub(r"(?i)^ISSN[:\s]*", "", s)
+    if re.fullmatch(r"\d{4}-?\d{3}[\dX]", s):
+        s = s.replace("-", "")
+        return f"{s[:4]}-{s[4:]}"
+    return None
+
+
+def strip_diacritics(value: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in nfkd if not unicodedata.combining(ch))
+
+
+def normalize_person_name(value: Any) -> str:
+    s = normalize_text(value)
+    if not s:
+        return ""
+    s = strip_diacritics(s).lower()
+    s = re.sub(r"[^a-z0-9\s-]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def normalize_title(value: Any) -> str:
+    s = normalize_text(value)
+    if not s:
+        return ""
+    s = strip_diacritics(s).lower()
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def normalize_claim_text(value: Any) -> str:
+    return normalize_title(value)
+
+
+def name_tokens(value: Any) -> Set[str]:
+    return set(normalize_person_name(value).split())
+
+
+def initials(value: Any) -> str:
+    parts = normalize_person_name(value).split()
+    return "".join(p[0] for p in parts[:3] if p)
+
+
+def surname_candidate(value: Any) -> str:
+    parts = normalize_person_name(value).split()
+    return parts[-1] if parts else ""
+
+
+def token_jaccard(a: Set[str], b: Set[str]) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return len(a & b) / float(len(a | b))
+
+
+def year_from_any(value: Any, date: Optional[datetime]) -> Optional[int]:
+    y = normalize_text(value)
+    if y.isdigit() and len(y) == 4:
+        return int(y)
+    if date:
+        return date.year
+    m = re.search(r"(19|20)\d{2}", normalize_text(value))
+    if m:
+        return int(m.group())
+    return None
+
+
+# --------------------------------------------------------------------
+# Policy / authorization
+# --------------------------------------------------------------------
+
+def collect_intent_text(manifest: Dict[str, Any]) -> str:
+    parts = [
+        normalize_text(manifest.get("objective", "")),
+        " ".join(normalize_text(q) for q in manifest.get("questions", []) or []),
+        " ".join(normalize_text(x) for x in manifest.get("requested_actions", []) or []),
+    ]
+    return " ".join(parts)
+
+
+def policy_screen(manifest: Dict[str, Any]) -> List[str]:
+    blob = collect_intent_text(manifest)
+    blocked = []
+    for pat, label in PROHIBITED_PATTERNS:
+        if pat.search(blob):
+            blocked.append(label)
+    return list(dict.fromkeys(blocked))
+
+
+def authorization_check(manifest: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    auth = manifest.get("authorization") or {}
+    reasons: List[str] = []
+
+    if not auth.get("approved"):
+        reasons.append("AUTHORIZATION_MISSING_OR_NOT_APPROVED")
+
+    scope = auth.get("scope", "provided_records_only")
+    if scope not in ALLOWED_SCOPES:
+        reasons.append("UNSUPPORTED_SCOPE")
+
+    model_mode = auth.get("model_mode", "LOCAL_ONLY")
+    if model_mode == "CLOUD" and not auth.get("cloud_approved"):
+        reasons.append("CLOUD_PROCESSING_NOT_APPROVED")
+
+    if model_mode not in {"LOCAL_ONLY", "HYBRID", "CLOUD"}:
+        reasons.append("UNKNOWN_MODEL_MODE")
+
+    if manifest.get("private_lab_records") and not auth.get("private_research_approved"):
+        reasons.append("PRIVATE_RESEARCH_RECORDS_NOT_APPROVED")
+
+    return (len(reasons) == 0), reasons
+
+
+# --------------------------------------------------------------------
+# Sources / pedigree / independence
+# --------------------------------------------------------------------
+
+def collect_referenced_source_ids(manifest: Dict[str, Any]) -> Set[str]:
+    ids = set()
+    buckets = (
+        "sources",
+        "publications",
+        "authors",
+        "institutions",
+        "journals",
+        "conferences",
+        "publishers",
+        "claims",
+        "citations",
+        "datasets",
+        "repositories",
+        "grants",
+        "funders",
+        "corrections",
+        "retractions",
+        "expressions_of_concern",
+        "replications",
+        "integrity_signals",
+    )
+    for bucket in buckets:
+        for item in manifest.get(bucket, []) or []:
+            for sid in item.get("source_ids", []) or []:
+                sid = normalize_text(sid)
+                if sid:
+                    ids.add(sid)
+            sid = normalize_text(item.get("source_id"))
+            if sid:
+                ids.add(sid)
+    return ids
+
+
+def ingest_sources(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    sources: Dict[str, Dict[str, Any]] = {}
+    for s in manifest.get("sources", []) or []:
+        sid = normalize_text(s.get("source_id"))
+        if not sid:
+            continue
+        stype = normalize_text(s.get("source_type", "unknown")).lower()
+        reliability = s.get("reliability")
+        if reliability is None:
+            reliability = SOURCE_RELIABILITY.get(stype, SOURCE_RELIABILITY["unknown"])
+        sources[sid] = {
+            "source_id": sid,
+            "source_type": stype,
+            "upstream_source_id": normalize_text(s.get("upstream_source_id")) or None,
+            "reliability": clamp(float(reliability)),
+            "observed_at": normalize_text(s.get("observed_at")) or None,
+            "url": s.get("url"),
+            "limitations": list(s.get("limitations", []) or []),
+        }
+
+    for sid in collect_referenced_source_ids(manifest):
+        if sid not in sources:
+            sources[sid] = {
+                "source_id": sid,
+                "source_type": "unknown",
+                "upstream_source_id": None,
+                "reliability": SOURCE_RELIABILITY["unknown"],
+                "observed_at": None,
+                "url": None,
+                "limitations": ["Source referenced but not defined in manifest."],
+            }
+    return sources
+
+
+def resolve_source_root(sid: str, sources: Dict[str, Dict[str, Any]], memo: Dict[str, str], visiting: Set[str]) -> str:
+    if sid in memo:
+        return memo[sid]
+    if sid in visiting:
+        return sid
+    visiting.add(sid)
+    src = sources.get(sid)
+    if not src or not src.get("upstream_source_id"):
+        memo[sid] = sid
+        visiting.discard(sid)
+        return sid
+    root = resolve_source_root(src["upstream_source_id"], sources, memo, visiting)
+    memo[sid] = root
+    visiting.discard(sid)
+    return root
+
+
+def build_source_roots(sources: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    memo: Dict[str, str] = {}
+    for sid in sources:
+        resolve_source_root(sid, sources, memo, set())
+    return memo
+
+
+def source_family_ids(source_ids: List[str], source_roots: Dict[str, str]) -> List[str]:
+    roots = []
+    for sid in source_ids:
+        roots.append(source_roots.get(sid, sid))
+    return list(dict.fromkeys(roots))
+
+
+def source_quality(source_ids: List[str], sources: Dict[str, Dict[str, Any]]) -> Tuple[float, float]:
+    vals = [float(sources.get(sid, {}).get("reliability", SOURCE_RELIABILITY["unknown"])) for sid in source_ids]
+    if not vals:
+        return SOURCE_RELIABILITY["unknown"], SOURCE_RELIABILITY["unknown"]
+    return max(vals), sum(vals) / len(vals)
+
+
+def independence_state(families: List[str], sources: Dict[str, Dict[str, Any]], source_ids: List[str]) -> str:
+    if not source_ids:
+        return "UNKNOWN"
+    if len(families) <= 1:
+        return "DEPENDENT"
+    types = {sources.get(sid, {}).get("source_type", "unknown") for sid in source_ids}
+    rels = [sources.get(sid, {}).get("reliability", 0.3) for sid in source_ids]
+    if len(types) == 1 and max(rels) < 0.70:
+        return "PARTIALLY_DEPENDENT"
+    if max(rels) >= 0.70:
+        return "INDEPENDENT"
+    return "PARTIALLY_DEPENDENT"
+
+
+# --------------------------------------------------------------------
+# Entity ensure helpers
+# --------------------------------------------------------------------
+
+def ensure_institution(
+    institutions: Dict[str, Dict[str, Any]],
+    ref: Any,
+    source_ids: Optional[List[str]] = None,
+    reason: str = "",
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        iid = normalize_text(ref.get("institution_id") or ref.get("id"))
+        name = normalize_text(ref.get("name") or ref.get("institution") or iid)
+        country = normalize_text(ref.get("country")) or None
+        itype = normalize_text(ref.get("type", "UNKNOWN")).upper()
+        parent = normalize_text(ref.get("parent_institution") or ref.get("parent")) or None
+        aliases = source_list(ref.get("aliases", []))
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        iid = normalize_text(stable_id("INST", normalize_person_name(s)))
+        name = s
+        country = None
+        itype = "UNKNOWN"
+        parent = None
+        aliases = []
+        sids = source_list(source_ids)
+
+    if not iid:
+        return None
+
+    if iid not in institutions:
+        institutions[iid] = {
+            "institution_id": iid,
+            "name": name or iid,
+            "type": itype if itype in {"UNIVERSITY", "COLLEGE", "INSTITUTE", "RESEARCH_CENTER", "LABORATORY", "HOSPITAL", "COMPANY_RESEARCH_LAB", "GOVERNMENT_LAB", "THINK_TANK", "FOUNDATION", "OTHER"} else "UNKNOWN",
+            "country": country,
+            "parent_institution": parent,
+            "aliases": aliases,
+            "source_ids": sids,
+            "limitations": list(([f"Placeholder created because: {reason}."] if reason else [])) + [
+                "Institution name/affiliation on a publication is not automatically current employment.",
+                "Lab is not automatically a separate legal entity.",
+            ],
+        }
+    else:
+        inst = institutions[iid]
+        if name and not inst.get("name"):
+            inst["name"] = name
+        for sid in sids:
+            add_unique(inst["source_ids"], sid)
+        for alias in aliases:
+            add_unique(inst["aliases"], alias)
+    return iid
+
+
+def ensure_journal(
+    journals: Dict[str, Dict[str, Any]],
+    ref: Any,
+    publishers: Dict[str, Dict[str, Any]],
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        jid = normalize_text(ref.get("journal_id") or ref.get("id"))
+        title = normalize_text(ref.get("title") or ref.get("name") or jid)
+        issn = normalize_issn(ref.get("issn"))
+        publisher_ref = ref.get("publisher")
+        subject_areas = source_list(ref.get("subject_areas", []), ref.get("fields", []))
+        review_model = normalize_text(ref.get("review_model", "UNKNOWN")).upper()
+        risk_state = normalize_text(ref.get("risk_state", "UNKNOWN")).upper()
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        jid = stable_id("JOURNAL", normalize_title(s))
+        title = s
+        issn = None
+        publisher_ref = None
+        subject_areas = []
+        review_model = "UNKNOWN"
+        risk_state = "UNKNOWN"
+        sids = source_list(source_ids)
+
+    publisher_id = ensure_publisher(publishers, publisher_ref, sids) if publisher_ref else None
+
+    if jid not in journals:
+        journals[jid] = {
+            "journal_id": jid,
+            "title": title or jid,
+            "issn": issn,
+            "publisher_id": publisher_id,
+            "subject_areas": subject_areas,
+            "review_model": review_model if review_model in {"PEER_REVIEWED", "EDITORIAL", "OPEN", "UNKNOWN"} else "UNKNOWN",
+            "risk_state": risk_state if risk_state in {"ESTABLISHED", "LIMITED_INFORMATION", "QUALITY_CONCERNS_REPORTED", "QUESTIONABLE_PRACTICES_CANDIDATE", "FORMALLY_SANCTIONED_OR_DELISTED", "UNKNOWN"} else "UNKNOWN",
+            "source_ids": sids,
+            "limitations": [
+                "Journal identity is not paper quality.",
+                "Impact factor is a journal-level metric, not individual paper validity.",
+                "Open access is not automatically low quality; paywall is not automatically high quality.",
+            ],
+        }
+    else:
+        j = journals[jid]
+        for sid in sids:
+            add_unique(j["source_ids"], sid)
+        if issn and not j.get("issn"):
+            j["issn"] = issn
+        if publisher_id and not j.get("publisher_id"):
+            j["publisher_id"] = publisher_id
+    return jid
+
+
+def ensure_conference(
+    conferences: Dict[str, Dict[str, Any]],
+    ref: Any,
+    publishers: Dict[str, Dict[str, Any]],
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        cid = normalize_text(ref.get("conference_id") or ref.get("id"))
+        name = normalize_text(ref.get("name") or ref.get("title") or cid)
+        series = normalize_text(ref.get("series")) or None
+        year = ref.get("year")
+        location = normalize_text(ref.get("location")) or None
+        organizer = normalize_text(ref.get("organizer")) or None
+        publisher_ref = ref.get("publisher")
+        review_context = normalize_text(ref.get("review_context", "UNKNOWN")).upper()
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        cid = stable_id("CONF", normalize_title(s))
+        name = s
+        series = None
+        year = None
+        location = None
+        organizer = None
+        publisher_ref = None
+        review_context = "UNKNOWN"
+        sids = source_list(source_ids)
+
+    publisher_id = ensure_publisher(publishers, publisher_ref, sids) if publisher_ref else None
+
+    if cid not in conferences:
+        conferences[cid] = {
+            "conference_id": cid,
+            "name": name or cid,
+            "series": series,
+            "year": year,
+            "location": location,
+            "organizer": organizer,
+            "publisher_id": publisher_id,
+            "review_context": review_context if review_context in {"PEER_REVIEWED", "EDITORIAL", "WORKSHOP", "UNKNOWN"} else "UNKNOWN",
+            "source_ids": sids,
+            "limitations": [
+                "Conference quality norms vary by field.",
+                "Similar conference names may be clones; resolve organizer/series/proceedings.",
+            ],
+        }
+    return cid
+
+
+def ensure_publisher(
+    publishers: Dict[str, Dict[str, Any]],
+    ref: Any,
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        pid = normalize_text(ref.get("publisher_id") or ref.get("id"))
+        name = normalize_text(ref.get("name") or pid)
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        pid = stable_id("PUBLISHER", normalize_title(s))
+        name = s
+        sids = source_list(source_ids)
+    if pid not in publishers:
+        publishers[pid] = {
+            "publisher_id": pid,
+            "name": name or pid,
+            "source_ids": sids,
+            "limitations": ["Publisher is not journal; publisher identity is not paper quality."],
+        }
+    return pid
+
+
+def ensure_dataset(
+    datasets: Dict[str, Dict[str, Any]],
+    ref: Any,
+    publication_id: Optional[str] = None,
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        did = normalize_text(ref.get("dataset_id") or ref.get("id"))
+        name = normalize_text(ref.get("name") or ref.get("title") or did)
+        version = normalize_text(ref.get("version")) or None
+        doi = normalize_doi(ref.get("doi"))
+        repository_id = normalize_text(ref.get("repository_id") or ref.get("repository")) or None
+        license_ = normalize_text(ref.get("license")) or None
+        availability = normalize_text(ref.get("availability", "UNKNOWN")).upper()
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        did = stable_id("DATASET", normalize_title(s))
+        name = s
+        version = None
+        doi = None
+        repository_id = None
+        license_ = None
+        availability = "UNKNOWN"
+        sids = source_list(source_ids)
+
+    if did not in datasets:
+        datasets[did] = {
+            "dataset_id": did,
+            "name": name or did,
+            "version": version,
+            "doi": doi,
+            "repository_id": repository_id,
+            "license": license_,
+            "availability": availability if availability in {"OPEN", "RESTRICTED", "UPON_REQUEST", "NOT_AVAILABLE", "UNKNOWN"} else "UNKNOWN",
+            "publication_ids": [],
+            "source_ids": sids,
+            "limitations": [
+                "Dataset availability is not proof that this exact version was used.",
+                "Dataset quality/provenance requires DATASETINT analysis.",
+            ],
+        }
+    if publication_id:
+        add_unique(datasets[did]["publication_ids"], publication_id)
+    return did
+
+
+def ensure_repository(
+    repositories: Dict[str, Dict[str, Any]],
+    ref: Any,
+    publication_id: Optional[str] = None,
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        rid = normalize_text(ref.get("repository_id") or ref.get("id"))
+        url = normalize_text(ref.get("url") or ref.get("repository_url")) or None
+        name = normalize_text(ref.get("name") or url or rid)
+        license_ = normalize_text(ref.get("license")) or None
+        archived = bool(ref.get("archived", False))
+        availability = normalize_text(ref.get("availability", "UNKNOWN")).upper()
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        rid = stable_id("REPO", normalize_title(s))
+        url = s if s.startswith("http") else None
+        name = s
+        license_ = None
+        archived = False
+        availability = "UNKNOWN"
+        sids = source_list(source_ids)
+
+    if rid not in repositories:
+        repositories[rid] = {
+            "repository_id": rid,
+            "name": name or rid,
+            "url": url,
+            "license": license_,
+            "archived": archived,
+            "availability": availability if availability in {"OPEN", "RESTRICTED", "UPON_REQUEST", "NOT_AVAILABLE", "UNKNOWN"} else "UNKNOWN",
+            "publication_ids": [],
+            "source_ids": sids,
+            "limitations": [
+                "Code availability is not automatic reproducibility.",
+                "Repository maintainer is not automatically paper author.",
+            ],
+        }
+    if publication_id:
+        add_unique(repositories[rid]["publication_ids"], publication_id)
+    return rid
+
+
+def ensure_funder(
+    funders: Dict[str, Dict[str, Any]],
+    ref: Any,
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        fid = normalize_text(ref.get("funder_id") or ref.get("id"))
+        name = normalize_text(ref.get("name") or fid)
+        country = normalize_text(ref.get("country")) or None
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        fid = stable_id("FUNDER", normalize_title(s))
+        name = s
+        country = None
+        sids = source_list(source_ids)
+    if fid not in funders:
+        funders[fid] = {
+            "funder_id": fid,
+            "name": name or fid,
+            "country": country,
+            "source_ids": sids,
+            "limitations": ["Funding support is not automatic funder control or research invalidity."],
+        }
+    return fid
+
+
+def ensure_grant(
+    grants: Dict[str, Dict[str, Any]],
+    funders: Dict[str, Dict[str, Any]],
+    ref: Any,
+    publication_id: Optional[str] = None,
+    source_ids: Optional[List[str]] = None,
+) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        gid = normalize_text(ref.get("grant_id") or ref.get("id"))
+        funder_id = ensure_funder(funders, ref.get("funder"), source_ids)
+        recipient_institution_id = normalize_text(ref.get("recipient_institution_id") or ref.get("institution")) or None
+        recipient_author_id = normalize_text(ref.get("recipient_author_id") or ref.get("author")) or None
+        program = normalize_text(ref.get("program")) or None
+        amount = ref.get("amount")
+        currency = normalize_text(ref.get("currency")) or None
+        period = normalize_text(ref.get("period")) or None
+        sids = source_list(ref.get("source_ids", []), ref.get("source_id"), source_ids)
+    else:
+        s = normalize_text(ref)
+        if not s:
+            return None
+        gid = stable_id("GRANT", normalize_title(s))
+        funder_id = None
+        recipient_institution_id = None
+        recipient_author_id = None
+        program = None
+        amount = None
+        currency = None
+        period = None
+        sids = source_list(source_ids)
+
+    if gid not in grants:
+        grants[gid] = {
+            "grant_id": gid,
+            "funder_id": funder_id,
+            "recipient_institution_id": recipient_institution_id,
+            "recipient_author_id": recipient_author_id,
+            "program": program,
+            "amount": amount,
+            "currency": currency,
+            "period": period,
+            "publication_ids": [],
+            "source_ids": sids,
+            "limitations": [
+                "Grant does not automatically explain every publication output.",
+                "Funding acknowledgment is source-reported unless cross-checked.",
+            ],
+        }
+    if publication_id:
+        add_unique(grants[gid]["publication_ids"], publication_id)
+    return gid
+
+
+# --------------------------------------------------------------------
+# Author / publication ingestion
+# --------------------------------------------------------------------
+
+def add_author_entry(
+    authors: Dict[str, Dict[str, Any]],
+    affiliations: List[Dict[str, Any]],
+    institutions: Dict[str, Dict[str, Any]],
+    entry: Any,
+    publication_id: str,
+    publication_year: Optional[int],
+    source_ids: Optional[List[str]],
+    default_institution: Any = None,
+) -> Optional[str]:
+    if isinstance(entry, dict):
+        name = normalize_text(entry.get("name") or entry.get("canonical_name") or entry.get("author"))
+        orcid_raw = entry.get("orcid")
+        aff_refs = entry.get("affiliations", []) or []
+        roles = source_list(entry.get("roles", []))
+        order = entry.get("order")
+        equal = bool(entry.get("equal_contribution", False))
+        corresponding = bool(entry.get("corresponding", False))
+        sids = source_list(entry.get("source_ids", []), entry.get("source_id"), source_ids)
+        inst_id_hint = normalize_text(entry.get("institution_id")) or None
+    else:
+        name = normalize_text(entry)
+        orcid_raw = None
+        aff_refs = []
+        roles = []
+        order = None
+        equal = False
+        corresponding = False
+        sids = source_list(source_ids)
+        inst_id_hint = None
+
+    if not name:
+        return None
+
+    parsed_orcid, orcid_valid = parse_orcid(orcid_raw)
+    norm = normalize_person_name(name)
+
+    if parsed_orcid and orcid_valid:
+        aid = f"ORCID:{parsed_orcid}"
+    elif parsed_orcid:
+        aid = stable_id("AUTH", norm, parsed_orcid)
+    else:
+        aid = stable_id("AUTH", norm, inst_id_hint or default_institution or "")
+
+    if aid not in authors:
+        authors[aid] = {
+            "author_id": aid,
+            "canonical_name": name,
+            "normalized_name": norm,
+            "name_variants": [name],
+            "orcid": parsed_orcid,
+            "orcid_valid": bool(orcid_valid),
+            "roles": [],
+            "corresponding_publication_ids": [],
+            "equal_contribution_publication_ids": [],
+            "affiliation_ids": [],
+            "publication_ids": [],
+            "research_fields": [],
+            "coauthor_ids": [],
+            "first_year": publication_year,
+            "last_year": publication_year,
+            "source_ids": sids,
+            "confidence_score": 0.60,
+            "limitations": [
+                "Author name alone is insufficient for identity resolution.",
+                "ORCID is useful but self-maintained and may be incomplete/outdated.",
+                "Co-authorship is scholarly collaboration, not personal relationship.",
+            ],
+        }
+
+    a = authors[aid]
+    add_unique(a["name_variants"], name)
+    if parsed_orcid and not a.get("orcid"):
+        a["orcid"] = parsed_orcid
+        a["orcid_valid"] = bool(orcid_valid)
+    if not a.get("orcid_valid") and orcid_valid:
+        a["orcid_valid"] = True
+    for role in roles:
+        add_unique(a["roles"], role.upper())
+    if corresponding:
+        add_unique(a["corresponding_publication_ids"], publication_id)
+    if equal:
+        add_unique(a["equal_contribution_publication_ids"], publication_id)
+    add_unique(a["publication_ids"], publication_id)
+    for sid in sids:
+        add_unique(a["source_ids"], sid)
+
+    if publication_year:
+        if a["first_year"] is None or publication_year < a["first_year"]:
+            a["first_year"] = publication_year
+        if a["last_year"] is None or publication_year > a["last_year"]:
+            a["last_year"] = publication_year
+
+    aff_list = list(aff_refs)
+    if not aff_list and default_institution is not None:
+        aff_list = [default_institution]
+
+    for aff in aff_list:
+        iid = ensure_institution(institutions, aff, sids, "author affiliation")
+        if iid:
+            add_unique(a["affiliation_ids"], iid)
+            affiliations.append({
+                "affiliation_id": stable_id("AFF", aid, iid, publication_id),
+                "author_id": aid,
+                "institution_id": iid,
+                "publication_id": publication_id,
+                "affiliation_text": normalize_text(aff.get("name") if isinstance(aff, dict) else aff) or None,
+                "valid_at_publication": publication_year,
+                "source_ids": sids,
+                "limitations": [
+                    "Affiliation on a publication supports affiliation around that work, not current employment.",
+                ],
+            })
+
+    if order is not None:
+        try:
+            a["last_order_seen"] = int(order)
+        except Exception:
+            pass
+
+    return aid
+
+
+def ingest_publications(
+    manifest: Dict[str, Any],
+    authors: Dict[str, Dict[str, Any]],
+    affiliations: List[Dict[str, Any]],
+    institutions: Dict[str, Dict[str, Any]],
+    journals: Dict[str, Dict[str, Any]],
+    conferences: Dict[str, Dict[str, Any]],
+    publishers: Dict[str, Dict[str, Any]],
+    grants: Dict[str, Dict[str, Any]],
+    funders: Dict[str, Dict[str, Any]],
+    datasets: Dict[str, Dict[str, Any]],
+    repositories: Dict[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    publications: Dict[str, Dict[str, Any]] = {}
+
+    for idx, p in enumerate(manifest.get("publications", []) or []):
+        doi = normalize_doi(p.get("doi"))
+        title = normalize_text(p.get("title"))
+        pub_date = parse_time(p.get("publication_date") or p.get("published_at") or p.get("date"))
+        online_date = parse_time(p.get("online_date"))
+        year = year_from_any(p.get("year"), pub_date)
+
+        author_entries = p.get("authors") or []
+        if isinstance(author_entries, str):
+            author_entries = [author_entries]
+        first_author_raw = ""
+        if author_entries:
+            first = author_entries[0]
+            first_author_raw = normalize_text(first.get("name") if isinstance(first, dict) else first)
+
+        pid = normalize_text(p.get("publication_id"))
+        if not pid:
+            if doi:
+                pid = f"DOI:{doi}"
+            else:
+                pid = stable_id("PUB", normalize_title(title), normalize_person_name(first_author_raw), year or 0)
+
+        author_ids = []
+        default_inst = p.get("institution") or p.get("affiliation")
+        for entry in author_entries:
+            aid = add_author_entry(
+                authors,
+                affiliations,
+                institutions,
+                entry,
+                pid,
+                year,
+                source_list(p.get("source_ids", []), p.get("source_id")),
+                default_institution=default_inst,
+            )
+            if aid:
+                author_ids.append(aid)
+
+        journal_id = ensure_journal(journals, p.get("journal"), publishers, source_list(p.get("source_ids", []), p.get("source_id")))
+        conference_id = ensure_conference(conferences, p.get("conference"), publishers, source_list(p.get("source_ids", []), p.get("source_id")))
+        publisher_id = ensure_publisher(publishers, p.get("publisher"), source_list(p.get("source_ids", []), p.get("source_id")))
+
+        dataset_ids = []
+        for d in p.get("datasets", []) or []:
+            did = ensure_dataset(datasets, d, pid, source_list(p.get("source_ids", []), p.get("source_id")))
+            if did:
+                dataset_ids.append(did)
+
+        repository_ids = []
+        for r in p.get("repositories", []) or p.get("code", []) or []:
+            rid = ensure_repository(repositories, r, pid, source_list(p.get("source_ids", []), p.get("source_id")))
+            if rid:
+                repository_ids.append(rid)
+
+        grant_ids = []
+        for g in p.get("grants", []) or p.get("funding", []) or []:
+            gid = ensure_grant(grants, funders, g, pid, source_list(p.get("source_ids", []), p.get("source_id")))
+            if gid:
+                grant_ids.append(gid)
+
+        ptype = normalize_text(p.get("publication_type", "UNKNOWN")).upper()
+        vstate = normalize_text(p.get("version_state", "UNKNOWN")).upper()
+        prstate = normalize_text(p.get("peer_review_status", "UNKNOWN")).upper()
+        vorstate = normalize_text(p.get("version_of_record_status", "UNKNOWN")).upper()
+        status = normalize_text(p.get("status", "ACTIVE")).upper()
+
+        publications[pid] = {
+            "publication_id": pid,
+            "doi": doi,
+            "title": title or None,
+            "normalized_title": normalize_title(title),
+            "publication_type": ptype if ptype in PUBLICATION_TYPES else "UNKNOWN",
+            "version_state": vstate if vstate in VERSION_STATES else "UNKNOWN",
+            "peer_review_status": prstate if prstate in PEER_REVIEW_STATES else "UNKNOWN",
+            "version_of_record_status": vorstate if vorstate in {"VERSION_OF_RECORD", "NOT_VERSION_OF_RECORD", "UNKNOWN"} else "UNKNOWN",
+            "status": status if status in PUBLICATION_STATUSES else "UNKNOWN",
+            "publication_date": pub_date,
+            "online_date": online_date,
+            "year": year,
+            "abstract": normalize_text(p.get("abstract")) or None,
+            "keywords": source_list(p.get("keywords", [])),
+            "fields": source_list(p.get("fields", []), p.get("research_fields", [])),
+            "journal_id": journal_id,
+            "conference_id": conference_id,
+            "publisher_id": publisher_id,
+            "author_ids": author_ids,
+            "canonical_author_ids": [],
+            "author_entries": author_entries,
+            "dataset_ids": dataset_ids,
+            "repository_ids": repository_ids,
+            "grant_ids": grant_ids,
+            "correction_ids": [],
+            "retraction_ids": [],
+            "expression_of_concern_ids": [],
+            "source_ids": source_list(p.get("source_ids", []), p.get("source_id")),
+            "evidence_ids": source_list(p.get("evidence_ids", [])),
+            "confidence_score": clamp(float(p.get("confidence", 0.70))),
+            "limitations": list(p.get("limitations", []) or []) + [
+                "Publication existence/metadata is not automatic validation of claims.",
+                "DOI is persistent identifier, not quality indicator.",
+                "Preprint is not automatically bad research; peer review is not automatic truth.",
+            ],
+        }
+
+    return publications
+
+
+def build_publication_lookup(publications: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    for pid, p in publications.items():
+        lookup[pid] = pid
+        if p.get("doi"):
+            lookup[p["doi"]] = pid
+            lookup[f"https://doi.org/{p['doi']}"] = pid
+        if p.get("title"):
+            lookup[normalize_title(p["title"])] = pid
+    return lookup
+
+
+def resolve_publication_id(ref: Any, lookup: Dict[str, str], publications: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict):
+        for key in ("publication_id", "id"):
+            s = normalize_text(ref.get(key))
+            if s in publications:
+                return s
+        doi = normalize_doi(ref.get("doi"))
+        if doi and doi in lookup:
+            return lookup[doi]
+        title = normalize_title(ref.get("title"))
+        if title and title in lookup:
+            return lookup[title]
+        return None
+
+    s = normalize_text(ref)
+    if not s:
+        return None
+    if s in publications:
+        return s
+    doi = normalize_doi(s)
+    if doi and doi in lookup:
+        return lookup[doi]
+    nt = normalize_title(s)
+    if nt in lookup:
+        return lookup[nt]
+    return None
+
+
+# --------------------------------------------------------------------
+# Claims / citations / corrections / retractions / replications
+# --------------------------------------------------------------------
+
+def ingest_claims(manifest: Dict[str, Any], publications: Dict[str, Dict[str, Any]], lookup: Dict[str, str]) -> List[Dict[str, Any]]:
+    claims = []
+    for idx, c in enumerate(manifest.get("claims", []) or []):
+        pub_id = resolve_publication_id(c.get("publication_id") or c.get("publication") or c.get("doi") or c.get("title"), lookup, publications)
+        text = normalize_text(c.get("text") or c.get("claim") or c.get("normalized_claim"))
+        normalized = normalize_claim_text(text)
+        group = normalize_text(c.get("claim_group_id")) or stable_id("CLAIMGROUP", normalized)
+        ctype = normalize_text(c.get("claim_type", "UNKNOWN")).upper()
+        design = normalize_text(c.get("study_design", "UNKNOWN")).upper()
+        claims.append({
+            "claim_id": normalize_text(c.get("claim_id")) or stable_id("CLAIM", pub_id or "UNKNOWN", idx, normalized),
+            "claim_group_id": group,
+            "publication_id": pub_id,
+            "claim_type": ctype if ctype in CLAIM_TYPES else "UNKNOWN",
+            "text": text or None,
+            "normalized_claim": normalized or None,
+            "population": normalize_text(c.get("population")) or None,
+            "intervention_or_variable": normalize_text(c.get("intervention_or_variable") or c.get("variable")) or None,
+            "outcome": normalize_text(c.get("outcome")) or None,
+            "method": normalize_text(c.get("method")) or None,
+            "study_design": design if design in STUDY_DESIGNS else "UNKNOWN",
+            "sample_size": c.get("sample_size"),
+            "effect_size": c.get("effect_size"),
+            "uncertainty": c.get("uncertainty"),
+            "limitations": list(c.get("limitations", []) or []) + [
+                "A paper reporting X establishes that the paper reports X, not that X is universally true.",
+                "Correlation is not causation; statistical significance is not practical importance.",
+            ],
+            "source_ids": source_list(c.get("source_ids", []), c.get("source_id")),
+            "evidence_ids": source_list(c.get("evidence_ids", [])),
+        })
+    return claims
+
+
+def classify_citation_purpose(context: str) -> str:
+    s = normalize_text(context).lower()
+    if not s:
+        return "UNKNOWN"
+    if re.search(r"replicat|reproduc|confirm(?:ed|s)?\b.*same|independent test", s):
+        return "REPLICATION"
+    if re.search(r"extend|build on|improve upon|we add", s):
+        return "EXTENSION"
+    if re.search(r"criticis|contrary|fail(?:ed)? to|does not support|dispute|challenge", s):
+        return "CRITICISM"
+    if re.search(r"method|protocol|procedure|following the approach|using the method", s):
+        return "METHOD"
+    if re.search(r"dataset|corpus|data from|benchmark data", s):
+        return "DATA_SOURCE"
+    if re.search(r"support|consistent with|agree|confirm|aligns with", s):
+        return "SUPPORT"
+    if re.search(r"background|prior work|review|literature|context", s):
+        return "BACKGROUND"
+    if re.search(r"contrast|unlike|whereas|however|different from", s):
+        return "CONTRAST"
+    return "UNKNOWN"
+
+
+def ingest_citations(manifest: Dict[str, Any], publications: Dict[str, Dict[str, Any]], lookup: Dict[str, str]) -> List[Dict[str, Any]]:
+    citations = []
+    for idx, c in enumerate(manifest.get("citations", []) or []):
+        citing = resolve_publication_id(c.get("citing_publication_id") or c.get("citing") or c.get("from"), lookup, publications)
+        cited = resolve_publication_id(c.get("cited_publication_id") or c.get("cited") or c.get("to"), lookup, publications)
+        if not citing or not cited:
+            continue
+        context = normalize_text(c.get("context") or c.get("citation_context"))
+        purpose = normalize_text(c.get("purpose") or c.get("citation_purpose") or classify_citation_purpose(context)).upper()
+        citations.append({
+            "citation_id": normalize_text(c.get("citation_id")) or stable_id("CIT", citing, cited, idx),
+            "citing_publication_id": citing,
+            "cited_publication_id": cited,
+            "context": context or None,
+            "purpose_candidate": purpose if purpose in CITATION_PURPOSES else "UNKNOWN",
+            "author_self_citation": False,
+            "version_self_citation": False,
+            "cited_version_family_id": None,
+            "cited_primary_publication_id": None,
+            "source_ids": source_list(c.get("source_ids", []), c.get("source_id")),
+            "limitations": [
+                "Citation is not automatic endorsement.",
+                "Citation count is not quality; negative citations can increase counts.",
+            ],
+        })
+    return citations
+
+
+def ingest_lifecycle_records(
+    manifest: Dict[str, Any],
+    publications: Dict[str, Dict[str, Any]],
+    lookup: Dict[str, str],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    corrections = []
+    retractions = []
+    eocs = []
+
+    for idx, c in enumerate(manifest.get("corrections", []) or []):
+        pid = resolve_publication_id(c.get("publication_id") or c.get("publication"), lookup, publications)
+        if not pid:
+            continue
+        cid = normalize_text(c.get("correction_id")) or stable_id("CORR", pid, idx)
+        corrections.append({
+            "correction_id": cid,
+            "publication_id": pid,
+            "type": normalize_text(c.get("type", "CORRECTION")).upper(),
+            "date": parse_time(c.get("date") or c.get("published_at")),
+            "reason": normalize_text(c.get("reason")) or None,
+            "affects": source_list(c.get("affects", [])),
+            "source_ids": source_list(c.get("source_ids", []), c.get("source_id")),
+            "limitations": ["Correction is normal scholarly maintenance; minor correction does not invalidate paper."],
+        })
+        publications[pid]["correction_ids"].append(cid)
+        if normalize_text(publications[pid].get("status")) not in {"RETRACTED", "WITHDRAWN"}:
+            publications[pid]["status"] = "CORRECTED"
+
+    for idx, r in enumerate(manifest.get("retractions", []) or []):
+        pid = resolve_publication_id(r.get("publication_id") or r.get("publication"), lookup, publications)
+        if not pid:
+            continue
+        rid = normalize_text(r.get("retraction_id")) or stable_id("RET", pid, idx)
+        retractions.append({
+            "retraction_id": rid,
+            "publication_id": pid,
+            "date": parse_time(r.get("date") or r.get("retracted_at")),
+            "reason": normalize_text(r.get("reason")) or None,
+            "scope": normalize_text(r.get("scope")) or None,
+            "source_ids": source_list(r.get("source_ids", []), r.get("source_id")),
+            "limitations": [
+                "Retraction is not automatically fraud.",
+                "Retraction weakens reliability but does not automatically make claim false if independent evidence exists.",
+            ],
+        })
+        publications[pid]["retraction_ids"].append(rid)
+        publications[pid]["status"] = "RETRACTED"
+        publications[pid]["version_state"] = "RETRACTED"
+
+    for idx, e in enumerate(manifest.get("expressions_of_concern", []) or []):
+        pid = resolve_publication_id(e.get("publication_id") or e.get("publication"), lookup, publications)
+        if not pid:
+            continue
+        eid = normalize_text(e.get("eoc_id")) or stable_id("EOC", pid, idx)
+        eocs.append({
+            "eoc_id": eid,
+            "publication_id": pid,
+            "date": parse_time(e.get("date")),
+            "reason": normalize_text(e.get("reason")) or None,
+            "source_ids": source_list(e.get("source_ids", []), e.get("source_id")),
+            "limitations": ["Expression of concern is distinct from retraction."],
+        })
+        publications[pid]["expression_of_concern_ids"].append(eid)
+        if normalize_text(publications[pid].get("status")) not in {"RETRACTED", "WITHDRAWN"}:
+            publications[pid]["status"] = "EXPRESSION_OF_CONCERN"
+
+    return corrections, retractions, eocs
+
+
+def ingest_replications(
+    manifest: Dict[str, Any],
+    publications: Dict[str, Dict[str, Any]],
+    lookup: Dict[str, str],
+    claims: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    claim_by_id = {c["claim_id"]: c for c in claims}
+    out = []
+    for idx, r in enumerate(manifest.get("replications", []) or []):
+        orig_pub = resolve_publication_id(r.get("original_publication_id") or r.get("original_publication"), lookup, publications)
+        repl_pub = resolve_publication_id(r.get("replication_publication_id") or r.get("replication_publication"), lookup, publications)
+        claim_id = normalize_text(r.get("original_claim_id") or r.get("claim_id")) or None
+        if claim_id and claim_id not in claim_by_id:
+            claim_id = None
+        direction = normalize_text(r.get("result_direction", "UNKNOWN")).upper()
+        out.append({
+            "replication_id": normalize_text(r.get("replication_id")) or stable_id("REP", orig_pub or "", repl_pub or "", claim_id or "", idx),
+            "original_publication_id": orig_pub,
+            "replication_publication_id": repl_pub,
+            "original_claim_id": claim_id,
+            "result_direction": direction if direction in REPLICATION_DIRECTIONS else "UNKNOWN",
+            "method_similarity": normalize_text(r.get("method_similarity")) or None,
+            "population_similarity": normalize_text(r.get("population_similarity")) or None,
+            "same_dataset": bool(r.get("same_dataset", False)),
+            "same_lab": bool(r.get("same_lab", False)),
+            "same_author": bool(r.get("same_author", False)),
+            "independence": normalize_text(r.get("independence", "UNKNOWN")).upper(),
+            "limitations": list(r.get("limitations", []) or []) + [
+                "Failed replication is not automatically original fraud.",
+                "Same dataset/cohort is analytical diversity, not fully independent empirical replication.",
+            ],
+            "source_ids": source_list(r.get("source_ids", []), r.get("source_id")),
+        })
+    return out
+
+
+def ingest_integrity_signals(
+    manifest: Dict[str, Any],
+    publications: Dict[str, Dict[str, Any]],
+    lookup: Dict[str, str],
+    claims: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    claim_ids = {c["claim_id"] for c in claims}
+    out = []
+    for idx, s in enumerate(manifest.get("integrity_signals", []) or []):
+        pid = resolve_publication_id(s.get("publication_id") or s.get("publication"), lookup, publications)
+        cid = normalize_text(s.get("claim_id")) or None
+        if cid and cid not in claim_ids:
+            cid = None
+        out.append({
+            "signal_id": normalize_text(s.get("signal_id")) or stable_id("INTEG", pid or "", cid or "", idx),
+            "publication_id": pid,
+            "claim_id": cid,
+            "type": normalize_text(s.get("type", "INTEGRITY_SIGNAL")).upper(),
+            "severity": normalize_text(s.get("severity", "LOW")).upper(),
+            "detail": normalize_text(s.get("detail")) or None,
+            "source_ids": source_list(s.get("source_ids", []), s.get("source_id")),
+            "limitations": [
+                "Integrity signal is not misconduct finding.",
+                "Plagiarism/image/statistical anomalies require contextual human review.",
+            ],
+        })
+    return out
+
+
+# --------------------------------------------------------------------
+# Author resolution
+# --------------------------------------------------------------------
+
+def author_similarity(a1: Dict[str, Any], a2: Dict[str, Any]) -> float:
+    score = 0.45
+    if set(a1.get("affiliation_ids", [])) & set(a2.get("affiliation_ids", [])):
+        score += 0.15
+    if set(a1.get("research_fields", [])) & set(a2.get("research_fields", [])):
+        score += 0.10
+    if set(a1.get("publication_ids", [])) & set(a2.get("publication_ids", [])):
+        score += 0.05
+    # Coauthor overlap will be enriched later; approximate via publication coauthors if available.
+    c1 = set(a1.get("coauthor_ids", []))
+    c2 = set(a2.get("coauthor_ids", []))
+    if c1 & c2:
+        score += 0.20
+    y1 = (a1.get("first_year"), a1.get("last_year"))
+    y2 = (a2.get("first_year"), a2.get("last_year"))
+    if all(x is not None for x in y1 + y2):
+        if not (y1[1] < y2[0] or y2[1] < y1[0]):
+            score += 0.10
+    return clamp(score)
+
+
+def resolve_authors(
+    authors: Dict[str, Dict[str, Any]],
+    publications: Dict[str, Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    # Build coauthor sets first.
+    for pid, p in publications.items():
+        aids = p.get("author_ids", [])
+        for a in aids:
+            if a in authors:
+                for b in aids:
+                    if b != a:
+                        add_unique(authors[a]["coauthor_ids"], b)
+        for a in aids:
+            if a in authors:
+                for f in p.get("fields", []):
+                    add_unique(authors[a]["research_fields"], f)
+                for k in p.get("keywords", []):
+                    add_unique(authors[a]["research_fields"], k)
+
+    canonical_map: Dict[str, str] = {}
+
+    # ORCID verified identities.
+    orcid_groups: Dict[str, List[str]] = defaultdict(list)
+    for aid, a in authors.items():
+        if a.get("orcid") and a.get("orcid_valid"):
+            orcid_groups[a["orcid"]].append(aid)
+            canonical_map[aid] = f"ORCID:{a['orcid']}"
+
+    # Non-ORCID name groups.
+    name_groups: Dict[str, List[str]] = defaultdict(list)
+    for aid, a in authors.items():
+        if aid in canonical_map:
+            continue
+        key = a.get("normalized_name") or normalize_person_name(a.get("canonical_name"))
+        if key:
+            name_groups[key].append(aid)
+
+    identities: List[Dict[str, Any]] = []
+
+    for orcid, aids in orcid_groups.items():
+        pub_ids = []
+        aff_ids = []
+        variants = []
+        fields = []
+        first_year = None
+        last_year = None
+        source_ids = []
+        for aid in aids:
+            a = authors[aid]
+            pub_ids.extend(a.get("publication_ids", []))
+            aff_ids.extend(a.get("affiliation_ids", []))
+            variants.extend(a.get("name_variants", []))
+            fields.extend(a.get("research_fields", []))
+            source_ids.extend(a.get("source_ids", []))
+            if a.get("first_year") is not None:
+                first_year = a["first_year"] if first_year is None else min(first_year, a["first_year"])
+            if a.get("last_year") is not None:
+                last_year = a["last_year"] if last_year is None else max(last_year, a["last_year"])
+        identities.append({
+            "identity_id": f"ORCID:{orcid}",
+            "canonical_name": authors[aids[0]].get("canonical_name"),
+            "name_variants": list(dict.fromkeys(variants)),
+            "orcid": orcid,
+            "orcid_valid": True,
+            "resolution_state": "VERIFIED_MATCH",
+            "member_author_ids": aids,
+            "publication_ids": list(dict.fromkeys(pub_ids)),
+            "affiliation_ids": list(dict.fromkeys(aff_ids)),
+            "research_fields": list(dict.fromkeys(fields)),
+            "first_year": first_year,
+            "last_year": last_year,
+            "source_ids": list(dict.fromkeys(source_ids)),
+            "confidence_score": 0.90,
+            "limitations": [
+                "ORCID is strong but self-maintained; consequential identity claims need corroboration.",
+            ],
+        })
+
+    for key, aids in name_groups.items():
+        parent = {aid: aid for aid in aids}
+
+        def find(x: str) -> str:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(x: str, y: str) -> None:
+            rx, ry = find(x), find(y)
+            if rx != ry:
+                parent[ry] = rx
+
+        for i in range(len(aids)):
+            for j in range(i + 1, len(aids)):
+                if author_similarity(authors[aids[i]], authors[aids[j]]) >= 0.75:
+                    union(aids[i], aids[j])
+
+        clusters: Dict[str, List[str]] = defaultdict(list)
+        for aid in aids:
+            clusters[find(aid)].append(aid)
+
+        for root, members in clusters.items():
+            canonical_id = root if len(members) == 1 else stable_id("AUTHIDENT", key, root)
+            for m in members:
+                canonical_map[m] = canonical_id
+
+            pub_ids = []
+            aff_ids = []
+            variants = []
+            fields = []
+            first_year = None
+            last_year = None
+            source_ids = []
+            orcid_invalid = False
+            for aid in members:
+                a = authors[aid]
+                pub_ids.extend(a.get("publication_ids", []))
+                aff_ids.extend(a.get("affiliation_ids", []))
+                variants.extend(a.get("name_variants", []))
+                fields.extend(a.get("research_fields", []))
+                source_ids.extend(a.get("source_ids", []))
+                if a.get("orcid") and not a.get("orcid_valid"):
+                    orcid_invalid = True
+                if a.get("first_year") is not None:
+                    first_year = a["first_year"] if first_year is None else min(first_year, a["first_year"])
+                if a.get("last_year") is not None:
+                    last_year = a["last_year"] if last_year is None else max(last_year, a["last_year"])
+
+            state = "PROBABLE_MATCH" if len(members) > 1 else "UNRESOLVED"
+            if orcid_invalid:
+                state = "UNRESOLVED"
+            identities.append({
+                "identity_id": canonical_id,
+                "canonical_name": authors[members[0]].get("canonical_name"),
+                "name_variants": list(dict.fromkeys(variants)),
+                "orcid": None,
+                "orcid_valid": False,
+                "resolution_state": state,
+                "member_author_ids": members,
+                "publication_ids": list(dict.fromkeys(pub_ids)),
+                "affiliation_ids": list(dict.fromkeys(aff_ids)),
+                "research_fields": list(dict.fromkeys(fields)),
+                "first_year": first_year,
+                "last_year": last_year,
+                "source_ids": list(dict.fromkeys(source_ids)),
+                "confidence_score": 0.70 if state == "PROBABLE_MATCH" else 0.45,
+                "limitations": [
+                    "Name-based author resolution is probabilistic.",
+                    "Same author name is not automatically same person.",
+                    "Affiliation on old publication is not current employment.",
+                ],
+            })
+
+    # Authors with invalid ORCID but no group? Already in name_groups if no valid ORCID.
+    for aid, a in authors.items():
+        if aid not in canonical_map:
+            canonical_map[aid] = aid
+            identities.append({
+                "identity_id": aid,
+                "canonical_name": a.get("canonical_name"),
+                "name_variants": a.get("name_variants", []),
+                "orcid": a.get("orcid"),
+                "orcid_valid": a.get("orcid_valid", False),
+                "resolution_state": "UNRESOLVED",
+                "member_author_ids": [aid],
+                "publication_ids": a.get("publication_ids", []),
+                "affiliation_ids": a.get("affiliation_ids", []),
+                "research_fields": a.get("research_fields", []),
+                "first_year": a.get("first_year"),
+                "last_year": a.get("last_year"),
+                "source_ids": a.get("source_ids", []),
+                "confidence_score": 0.35,
+                "limitations": ["Author identity unresolved."],
+            })
+
+    for pid, p in publications.items():
+        canon = [canonical_map.get(aid, aid) for aid in p.get("author_ids", [])]
+        p["canonical_author_ids"] = list(dict.fromkeys(canon))
+
+    return identities, canonical_map
+
+
+# --------------------------------------------------------------------
+# Publication version clustering
+# --------------------------------------------------------------------
+
+def cluster_publications(
+    publications: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    families: List[Dict[str, Any]] = []
+    assigned: Set[str] = set()
+
+    # DOI exact.
+    by_doi: Dict[str, List[str]] = defaultdict(list)
+    for pid, p in publications.items():
+        if p.get("doi"):
+            by_doi[p["doi"]].append(pid)
+
+    for doi, pids in by_doi.items():
+        if len(pids) >= 1:
+            fam_id = stable_id("WORK", "doi", doi)
+            families.append(make_version_family(fam_id, pids, publications))
+            assigned.update(pids)
+
+    # Title/author/year similarity.
+    remaining = [pid for pid in publications if pid not in assigned]
+    for i in range(len(remaining)):
+        pid_a = remaining[i]
+        if pid_a in assigned:
+            continue
+        p_a = publications[pid_a]
+        group = [pid_a]
+        for j in range(i + 1, len(remaining)):
+            pid_b = remaining[j]
+            if pid_b in assigned:
+                continue
+            p_b = publications[pid_b]
+            title_sim = token_jaccard(set(normalize_title(p_a.get("title") or "").split()), set(normalize_title(p_b.get("title") or "").split()))
+            author_overlap = bool(set(p_a.get("canonical_author_ids", [])) & set(p_b.get("canonical_author_ids", [])))
+            year_a = p_a.get("year")
+            year_b = p_b.get("year")
+            year_close = (year_a is None or year_b is None or abs(int(year_a) - int(year_b)) <= 2)
+            if title_sim >= 0.85 and (author_overlap or not p_a.get("canonical_author_ids") or not p_b.get("canonical_author_ids")) and year_close:
+                group.append(pid_b)
+        if len(group) > 1 or True:
+            fam_id = stable_id("WORK", normalize_title(p_a.get("title") or ""), (p_a.get("canonical_author_ids") or [""])[0], p_a.get("year") or 0)
+            families.append(make_version_family(fam_id, group, publications))
+            assigned.update(group)
+
+    # Any unassigned.
+    for pid in publications:
+        if pid not in assigned:
+            p = publications[pid]
+            fam_id = stable_id("WORK", pid)
+            families.append(make_version_family(fam_id, [pid], publications))
+
+    for fam in families:
+        for pid in fam["publication_ids"]:
+            publications[pid]["version_family_id"] = fam["family_id"]
+            publications[pid]["primary_publication_id"] = fam["primary_publication_id"]
+
+    return families
+
+
+def make_version_family(family_id: str, pids: List[str], publications: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    pubs = [publications[pid] for pid in pids if pid in publications]
+    vor_candidates = [
+        p for p in pubs
+        if p.get("version_state") == "VERSION_OF_RECORD"
+        or p.get("version_of_record_status") == "VERSION_OF_RECORD"
+        or (p.get("peer_review_status") == "PEER_REVIEWED_REPORTED" and p.get("publication_type") in {"JOURNAL_ARTICLE", "CONFERENCE_PAPER"})
+    ]
+    vor_candidates.sort(key=lambda p: (p.get("publication_date") or FAR_FUTURE, p.get("online_date") or FAR_FUTURE), reverse=True)
+    vor_id = vor_candidates[0]["publication_id"] if vor_candidates else None
+    primary_id = vor_id or sorted(pubs, key=lambda p: (p.get("publication_date") or FAR_FUTURE), reverse=True)[0]["publication_id"] if pubs else (pids[0] if pids else None)
+    preprint_ids = [p["publication_id"] for p in pubs if p.get("publication_type") == "PREPRINT" or p.get("version_state") == "PREPRINT"]
+    duplicate_ids = []
+    if len(pids) > 1 and vor_id:
+        duplicate_ids = [pid for pid in pids if pid != vor_id and publications[pid].get("doi") and publications[pid].get("doi") == publications[vor_id].get("doi")]
+
+    state = "VERSION_FAMILY"
+    if len(pids) == 1:
+        state = "SINGLE_VERSION"
+    elif not vor_id:
+        state = "VERSION_OF_RECORD_UNRESOLVED"
+
+    return {
+        "family_id": family_id,
+        "publication_ids": pids,
+        "primary_publication_id": primary_id,
+        "version_of_record_id": vor_id,
+        "preprint_ids": preprint_ids,
+        "duplicate_ids": duplicate_ids,
+        "state": state,
+        "limitations": [
+            "Version clustering is heuristic unless DOI/official metadata supports it.",
+            "Do not count preprint/journal versions as separate independent research outputs.",
+        ],
+    }
+
+
+# --------------------------------------------------------------------
+# Citation / network / integrity / replication analysis
+# --------------------------------------------------------------------
+
+def enrich_citations(
+    citations: List[Dict[str, Any]],
+    publications: Dict[str, Dict[str, Any]],
+) -> None:
+    for cit in citations:
+        citing = publications.get(cit["citing_publication_id"], {})
+        cited = publications.get(cit["cited_publication_id"], {})
+        a1 = set(citing.get("canonical_author_ids", []))
+        a2 = set(cited.get("canonical_author_ids", []))
+        cit["author_self_citation"] = bool(a1 & a2)
+        if citing.get("version_family_id") and citing.get("version_family_id") == cited.get("version_family_id"):
+            cit["version_self_citation"] = True
+        cit["cited_version_family_id"] = cited.get("version_family_id")
+        cit["cited_primary_publication_id"] = cited.get("primary_publication_id")
+
+
+def build_citation_network(citations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    incoming = Counter()
+    outgoing = Counter()
+    by_purpose = Counter()
+    self_citations = 0
+    version_self_citations = 0
+    for c in citations:
+        incoming[c["cited_publication_id"]] += 1
+        outgoing[c["citing_publication_id"]] += 1
+        by_purpose[c["purpose_candidate"]] += 1
+        if c.get("author_self_citation"):
+            self_citations += 1
+        if c.get("version_self_citation"):
+            version_self_citations += 1
+    return {
+        "incoming_counts": dict(incoming),
+        "outgoing_counts": dict(outgoing),
+        "purpose_counts": dict(by_purpose),
+        "self_citation_count": self_citations,
+        "version_self_citation_count": version_self_citations,
+        "limitations": [
+            "Citation counts are coverage- and field-dependent.",
+            "Citation purpose is heuristic unless context is explicit.",
+        ],
+    }
+
+
+def build_coauthorship_network(publications: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    edges: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for pid, p in publications.items():
+        aids = p.get("canonical_author_ids", [])
+        for i in range(len(aids)):
+            for j in range(i + 1, len(aids)):
+                a, b = sorted((aids[i], aids[j]))
+                key = (a, b)
+                if key not in edges:
+                    edges[key] = {
+                        "edge_id": stable_id("COAUTH", a, b),
+                        "author_a": a,
+                        "author_b": b,
+                        "publication_ids": [],
+                        "joint_publication_count": 0,
+                    }
+                edges[key]["publication_ids"].append(pid)
+                edges[key]["joint_publication_count"] += 1
+    out = list(edges.values())
+    for e in out:
+        e["publication_ids"] = list(dict.fromkeys(e["publication_ids"]))
+    return out
+
+
+def build_topic_trends(publications: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    keyword_year: Dict[str, Counter] = defaultdict(Counter)
+    field_year: Dict[str, Counter] = defaultdict(Counter)
+    keyword_total = Counter()
+    field_total = Counter()
+    year_counts = Counter()
+
+    for p in publications.values():
+        y = p.get("year")
+        if y:
+            year_counts[int(y)] += 1
+        for k in p.get("keywords", []):
+            kk = normalize_text(k).lower()
+            keyword_total[kk] += 1
+            if y:
+                keyword_year[kk][int(y)] += 1
+        for f in p.get("fields", []):
+            ff = normalize_text(f).lower()
+            field_total[ff] += 1
+            if y:
+                field_year[ff][int(y)] += 1
+
+    return {
+        "top_keywords": keyword_total.most_common(50),
+        "top_fields": field_total.most_common(50),
+        "publications_by_year": dict(sorted(year_counts.items())),
+        "keyword_year_matrix": {k: dict(v) for k, v in list(keyword_year.items())[:100]},
+        "field_year_matrix": {k: dict(v) for k, v in list(field_year.items())[:100]},
+        "limitations": [
+            "Trend is not importance.",
+            "Database coverage and field citation practices affect trends.",
+        ],
+    }
+
+
+def pubs_dependent(
+    pid1: str,
+    pid2: str,
+    publications: Dict[str, Dict[str, Any]],
+    source_roots: Dict[str, str],
+) -> bool:
+    if pid1 == pid2:
+        return True
+    p1 = publications.get(pid1, {})
+    p2 = publications.get(pid2, {})
+    if p1.get("version_family_id") and p1.get("version_family_id") == p2.get("version_family_id"):
+        return True
+    if set(p1.get("canonical_author_ids", [])) & set(p2.get("canonical_author_ids", [])):
+        return True
+    if set(p1.get("dataset_ids", [])) & set(p2.get("dataset_ids", [])):
+        return True
+    fam1 = source_family_ids(p1.get("source_ids", []), source_roots)
+    fam2 = source_family_ids(p2.get("source_ids", []), source_roots)
+    if fam1 and fam2 and set(fam1) & set(fam2):
+        return True
+    return False
+
+
+def detect_integrity_signals(
+    publications: Dict[str, Dict[str, Any]],
+    citations: List[Dict[str, Any]],
+    version_families: List[Dict[str, Any]],
+    claims: List[Dict[str, Any]],
+    source_roots: Dict[str, str],
+    existing: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    signals = list(existing)
+
+    for fam in version_families:
+        if fam.get("state") == "VERSION_OF_RECORD_UNRESOLVED" and len(fam.get("publication_ids", [])) > 1:
+            signals.append({
+                "signal_id": stable_id("AUTOINTEG", "version_unresolved", fam["family_id"]),
+                "publication_id": fam.get("primary_publication_id"),
+                "claim_id": None,
+                "type": "VERSION_OF_RECORD_UNRESOLVED",
+                "severity": "LOW",
+                "detail": "Multiple publication versions exist but version of record is unresolved.",
+                "source_ids": [],
+                "limitations": ["Heuristic version-resolution signal, not misconduct."],
+            })
+        vor_count = sum(1 for pid in fam.get("publication_ids", []) if publications.get(pid, {}).get("version_state") == "VERSION_OF_RECORD")
+        if vor_count > 1:
+            signals.append({
+                "signal_id": stable_id("AUTOINTEG", "multiple_vor", fam["family_id"]),
+                "publication_id": fam.get("primary_publication_id"),
+                "claim_id": None,
+                "type": "MULTIPLE_VERSION_OF_RECORD_CANDIDATE",
+                "severity": "MEDIUM",
+                "detail": "Version family contains multiple records marked version-of-record.",
+                "source_ids": [],
+                "limitations": ["May be metadata conflict, not duplicate publication."],
+            })
+
+    for pid, p in publications.items():
+        if p.get("status") == "RETRACTED":
+            signals.append({
+                "signal_id": stable_id("AUTOINTEG", "retracted", pid),
+                "publication_id": pid,
+                "claim_id": None,
+                "type": "RETRACTION_PRESENT",
+                "severity": "HIGH",
+                "detail": "Publication is marked retracted in provided records.",
+                "source_ids": p.get("source_ids", []),
+                "limitations": ["Retraction reason may vary; not automatically fraud."],
+            })
+        if p.get("status") == "EXPRESSION_OF_CONCERN":
+            signals.append({
+                "signal_id": stable_id("AUTOINTEG", "eoc", pid),
+                "publication_id": pid,
+                "claim_id": None,
+                "type": "EXPRESSION_OF_CONCERN_PRESENT",
+                "severity": "MEDIUM",
+                "detail": "Publication has expression of concern.",
+                "source_ids": p.get("source_ids", []),
+                "limitations": ["Expression of concern is not retraction."],
+            })
+
+    retracted_ids = {pid for pid, p in publications.items() if p.get("status") == "RETRACTED"}
+    for cit in citations:
+        if cit["cited_publication_id"] in retracted_ids and cit.get("purpose_candidate") == "SUPPORT":
+            signals.append({
+                "signal_id": stable_id("AUTOINTEG", "retraction_propagation", cit["citation_id"]),
+                "publication_id": cit["citing_publication_id"],
+                "claim_id": None,
+                "type": "RETRACTION_PROPAGATION_SIGNAL",
+                "severity": "MEDIUM",
+                "detail": "A citing paper appears to support a claim using a retracted cited publication.",
+                "source_ids": cit.get("source_ids", []),
+                "limitations": ["Citation purpose is heuristic; downstream claim may be independently supported."],
+            })
+
+    # High self-citation ratio signal per canonical author.
+    author_incoming = Counter()
+    author_self = Counter()
+    for cit in citations:
+        cited = publications.get(cit["cited_publication_id"], {})
+        for aid in cited.get("canonical_author_ids", []):
+            author_incoming[aid] += 1
+            if cit.get("author_self_citation"):
+                author_self[aid] += 1
+    for aid, total in author_incoming.items():
+        if total >= 10 and author_self[aid] / float(total) >= 0.50:
+            signals.append({
+                "signal_id": stable_id("AUTOINTEG", "self_citation_ratio", aid),
+                "publication_id": None,
+                "claim_id": None,
+                "type": "HIGH_SELF_CITATION_RATIO_SIGNAL",
+                "severity": "LOW",
+                "detail": f"Author {aid} has self-citation ratio {author_self[aid]/float(total):.2f} over {total} incoming citations.",
+                "source_ids": [],
+                "limitations": ["Self-citation is normal; ratio alone is not manipulation."],
+            })
+
+    return unique_preserve(signals)
+
+
+def analyze_replications(
+    replications: List[Dict[str, Any]],
+    publications: Dict[str, Dict[str, Any]],
+    source_roots: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    out = []
+    for r in replications:
+        orig = r.get("original_publication_id")
+        repl = r.get("replication_publication_id")
+        state = normalize_text(r.get("independence", "UNKNOWN")).upper()
+        if state not in {"INDEPENDENT", "PARTIALLY_DEPENDENT", "DEPENDENT", "UNKNOWN"}:
+            state = "UNKNOWN"
+
+        if orig and repl:
+            if r.get("same_dataset") or r.get("same_author") or r.get("same_lab"):
+                state = "DEPENDENT" if r.get("same_dataset") or r.get("same_author") else "PARTIALLY_DEPENDENT"
+            elif pubs_dependent(orig, repl, publications, source_roots):
+                state = "PARTIALLY_DEPENDENT"
+            else:
+                fam_o = source_family_ids(publications.get(orig, {}).get("source_ids", []), source_roots)
+                fam_r = source_family_ids(publications.get(repl, {}).get("source_ids", []), source_roots)
+                if fam_o and fam_r and not (set(fam_o) & set(fam_r)):
+                    state = "INDEPENDENT"
+                else:
+                    state = "UNKNOWN"
+
+        rr = dict(r)
+        rr["computed_independence"] = state
+        rr["limitations"] = list(rr.get("limitations", [])) + [
+            "Replication independence is assessed from provided metadata; hidden shared cohorts/datasets may remain unknown.",
+        ]
+        out.append(rr)
+    return out
+
+
+def assess_claim_consensus(
+    claims: List[Dict[str, Any]],
+    citations: List[Dict[str, Any]],
+    replications: List[Dict[str, Any]],
+    publications: Dict[str, Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+    source_roots: Dict[str, str],
+    integrity_signals: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for c in claims:
+        groups[c["claim_group_id"]].append(c)
+
+    assessments = []
+    for gid, cls in groups.items():
+        primary_pubs = {c["publication_id"] for c in cls if c.get("publication_id")}
+        supporting = set(primary_pubs)
+        contradicting = set()
+        neutral = set()
+
+        for r in replications:
+            if r.get("original_claim_id") in {c["claim_id"] for c in cls} or r.get("original_publication_id") in primary_pubs:
+                repl = r.get("replication_publication_id")
+                if not repl:
+                    continue
+                direction = r.get("result_direction")
+                if direction in {"SUPPORTS", "PARTIAL_SUPPORTS"}:
+                    supporting.add(repl)
+                elif direction == "CONTRADICTS":
+                    contradicting.add(repl)
+                elif direction == "NULL":
+                    neutral.add(repl)
+
+        for cit in citations:
+            if cit.get("cited_publication_id") in primary_pubs:
+                citing = cit.get("citing_publication_id")
+                if not citing:
+                    continue
+                purpose = cit.get("purpose_candidate")
+                if purpose == "SUPPORT":
+                    supporting.add(citing)
+                elif purpose in {"CRITICISM", "CONTRAST"}:
+                    contradicting.add(citing)
+                elif purpose == "REPLICATION":
+                    supporting.add(citing)
+
+        supporting -= primary_pubs
+        contradicting -= primary_pubs
+
+        independent_support = set()
+        dependent_support = set()
+        for pid in supporting:
+            if any(pubs_dependent(pid, orig, publications, source_roots) for orig in primary_pubs):
+                dependent_support.add(pid)
+            else:
+                independent_support.add(pid)
+
+        independent_contradict = set()
+        for pid in contradicting:
+            if not any(pubs_dependent(pid, orig, publications, source_roots) for orig in primary_pubs):
+                independent_contradict.add(pid)
+
+        source_ids = []
+        for pid in primary_pubs | supporting | contradicting:
+            source_ids.extend(publications.get(pid, {}).get("source_ids", []))
+        for c in cls:
+            source_ids.extend(c.get("source_ids", []))
+        source_ids = list(dict.fromkeys(source_ids))
+        families = source_family_ids(source_ids, source_roots)
+        indep = independence_state(families, sources, source_ids)
+
+        retracted_support = {pid for pid in supporting | primary_pubs if publications.get(pid, {}).get("status") == "RETRACTED"}
+        eoc_support = {pid for pid in supporting | primary_pubs if publications.get(pid, {}).get("status") == "EXPRESSION_OF_CONCERN"}
+        signal_pub_ids = {s.get("publication_id") for s in integrity_signals if s.get("publication_id")}
+        high_signals = [s for s in integrity_signals if s.get("publication_id") in (primary_pubs | supporting) and s.get("severity") in {"HIGH", "CRITICAL"}]
+
+        if not primary_pubs:
+            state = "INSUFFICIENT_EVIDENCE"
+            reason = "No primary publication linked to claim group."
+        elif retracted_support and not (supporting - retracted_support):
+            state = "WEAK_EVIDENCE"
+            reason = "Supporting publications are retracted or materially compromised."
+        elif independent_support and independent_contradict:
+            state = "MIXED_EVIDENCE" if len(independent_support) >= len(independent_contradict) else "ACTIVE_DEBATE"
+            reason = "Independent supporting and contradicting evidence exist."
+        elif len(independent_support) >= 3 and not independent_contradict and not high_signals:
+            state = "STRONG_CONSENSUS"
+            reason = "Multiple independent supporting studies/replications with no material contradiction in provided evidence."
+        elif len(independent_support) >= 2 and not independent_contradict:
+            state = "MODERATE_CONSENSUS"
+            reason = "At least two independent supporting sources/replications."
+        elif len(independent_support) >= 1:
+            state = "EMERGING_CONSENSUS"
+            reason = "Some independent support exists, but evidence base is narrow."
+        elif dependent_support and not independent_contradict:
+            state = "WEAK_EVIDENCE"
+            reason = "Support is largely dependent on same authors/datasets/versions/sources."
+        elif contradicting:
+            state = "MIXED_EVIDENCE"
+            reason = "Contradicting evidence exists; independence not sufficient."
+        else:
+            state = "INSUFFICIENT_EVIDENCE"
+            reason = "No independent supporting evidence identified in provided records."
+
+        if eoc_support and state in {"STRONG_CONSENSUS", "MODERATE_CONSENSUS"}:
+            state = "MIXED_EVIDENCE"
+            reason += " Expression-of-concern reduces confidence."
+
+        assessments.append({
+            "claim_group_id": gid,
+            "claim_ids": [c["claim_id"] for c in cls],
+            "primary_publication_ids": sorted(primary_pubs),
+            "supporting_publication_ids": sorted(supporting),
+            "contradicting_publication_ids": sorted(contradicting),
+            "neutral_publication_ids": sorted(neutral),
+            "independent_support_publication_ids": sorted(independent_support),
+            "dependent_support_publication_ids": sorted(dependent_support),
+            "independent_contradicting_publication_ids": sorted(independent_contradict),
+            "source_independence_state": indep,
+            "retracted_support_publication_ids": sorted(retracted_support),
+            "expression_of_concern_publication_ids": sorted(eoc_support),
+            "consensus_state": state,
+            "reason": reason,
+            "limitations": [
+                "Consensus reflects provided evidence and source independence, not raw paper count.",
+                "Publication bias, database coverage, and hidden dataset sharing may remain unknown.",
+                "AI agreement is not scholarly replication.",
+            ],
+        })
+
+    return assessments
+
+
+def detect_contradictions(
+    publications: Dict[str, Dict[str, Any]],
+    citations: List[Dict[str, Any]],
+    replications: List[Dict[str, Any]],
+    consensus: List[Dict[str, Any]],
+    version_families: List[Dict[str, Any]],
+    integrity_signals: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    contr = []
+
+    for c in consensus:
+        if c.get("independent_support_publication_ids") and c.get("independent_contradicting_publication_ids"):
+            contr.append({
+                "contradiction_id": stable_id("CTR", "claim", c["claim_group_id"]),
+                "type": "CLAIM_LEVEL_CONTRADICTION",
+                "severity": "MATERIAL",
+                "claim_group_id": c["claim_group_id"],
+                "detail": "Independent supporting and contradicting evidence exist for the same claim group.",
+                "possible_causes": [
+                    "population differences",
+                    "method differences",
+                    "dataset differences",
+                    "statistical power",
+                    "publication/version conflict",
+                    "research-integrity issue",
+                ],
+            })
+
+    for fam in version_families:
+        vor_count = sum(1 for pid in fam.get("publication_ids", []) if publications.get(pid, {}).get("version_state") == "VERSION_OF_RECORD")
+        if vor_count > 1:
+            contr.append({
+                "contradiction_id": stable_id("CTR", "version", fam["family_id"]),
+                "type": "MULTIPLE_VERSION_OF_RECORD",
+                "severity": "MATERIAL",
+                "version_family_id": fam["family_id"],
+                "detail": "Version family has multiple records marked version-of-record.",
+                "possible_causes": ["metadata conflict", "duplicate DOI", "publisher correction", "preprint/journal mismatch"],
+            })
+
+    retracted = {pid for pid, p in publications.items() if p.get("status") == "RETRACTED"}
+    for cit in citations:
+        if cit.get("cited_publication_id") in retracted and cit.get("purpose_candidate") == "SUPPORT":
+            contr.append({
+                "contradiction_id": stable_id("CTR", "retraction_citation", cit["citation_id"]),
+                "type": "RETRACTED_SOURCE_USED_AS_SUPPORT",
+                "severity": "MATERIAL",
+                "citation_id": cit["citation_id"],
+                "detail": "A supporting citation points to a retracted publication.",
+                "possible_causes": ["citation not updated after retraction", "independent support omitted", "metadata lag"],
+            })
+
+    by_doi: Dict[str, List[str]] = defaultdict(list)
+    for pid, p in publications.items():
+        if p.get("doi"):
+            by_doi[p["doi"]].append(pid)
+    for doi, pids in by_doi.items():
+        titles = {normalize_title(publications[pid].get("title") or "") for pid in pids}
+        if len(titles) > 1:
+            contr.append({
+                "contradiction_id": stable_id("CTR", "doi_title", doi),
+                "type": "DOI_TITLE_CONFLICT",
+                "severity": "MATERIAL",
+                "doi": doi,
+                "detail": f"Same DOI maps to multiple titles: {sorted(titles)}.",
+                "possible_causes": ["incorrect DOI metadata", "duplicate record", "version DOI misuse"],
+            })
+
+    return unique_preserve(contr)
+
+
+def build_hypotheses(
+    consensus: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    integrity_signals: List[Dict[str, Any]],
+    replications: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    hyp = []
+
+    def add(subject_type: str, subject_id: str, category: str, statement: str, support: List[str], opposition: List[str], unknowns: List[str], falsification: List[str]) -> None:
+        hyp.append({
+            "hypothesis_id": stable_id("HYP", subject_type, subject_id, category, statement),
+            "subject_type": subject_type,
+            "subject_id": subject_id,
+            "category": category,
+            "statement": statement,
+            "support": support,
+            "opposition": opposition,
+            "unknowns": unknowns,
+            "falsification_conditions": falsification,
+            "status": "CANDIDATE",
+        })
+
+    for c in consensus:
+        gid = c["claim_group_id"]
+        add("CLAIM_GROUP", gid, "ROBUST",
+            "Claim is robust across independent studies/populations/methods.",
+            [f"independent_support_count={len(c.get('independent_support_publication_ids', []))}"],
+            ["Evidence may be concentrated in shared datasets/cohort/labs."],
+            ["Hidden dataset sharing", "publication bias", "unsearched databases"],
+            ["Independent studies using different datasets/populations fail to replicate."])
+        add("CLAIM_GROUP", gid, "POPULATION_SPECIFIC",
+            "Effect may exist only in specific population/context.",
+            [f"primary_publications={len(c.get('primary_publication_ids', []))}"],
+            ["Independent contradictory studies may exist."],
+            ["population moderators", "measurement differences"],
+            ["Same effect appears across diverse populations with consistent methods."])
+        add("CLAIM_GROUP", gid, "METHOD_DEPENDENT",
+            "Result may depend on method/model/benchmark implementation.",
+            ["method/dataset linkage may be narrow"],
+            ["Multiple independent methods support claim."],
+            ["software versions", "evaluation protocol", "hyperparameters"],
+            ["Different methods reproduce effect."])
+        add("CLAIM_GROUP", gid, "SHARED_DATASET",
+            "Apparent support may derive from same dataset/cohort.",
+            [f"dependent_support_count={len(c.get('dependent_support_publication_ids', []))}"],
+            ["Independent support exists."],
+            ["underlying data provenance", "split leakage"],
+            ["Analyses on independent datasets reproduce effect."])
+        add("CLAIM_GROUP", gid, "PUBLICATION_BIAS",
+            "Literature may overrepresent positive/significant results.",
+            ["absence of null results in searched sources"],
+            ["Null results may be unpublished or uncovered."],
+            ["database coverage", "grey literature"],
+            ["Registered reports/preprints/null results balance evidence."])
+        add("CLAIM_GROUP", gid, "CITATION_PROPAGATION",
+            "Claim may be repeated through citations without independent verification.",
+            ["citation network may propagate original claim"],
+            ["Citation context shows independent replication."],
+            ["citation purpose accuracy", "version deduplication"],
+            ["Claim pedigree reveals multiple independent primary demonstrations."])
+        if c.get("retracted_support_publication_ids"):
+            add("CLAIM_GROUP", gid, "INTEGRITY_IMPACT",
+                "Retracted/corrected sources materially weaken support.",
+                [f"retracted_support={c.get('retracted_support_publication_ids')}"],
+                ["Independent non-retracted support exists."],
+                ["retraction reason", "claim-level impact"],
+                ["Independent evidence supports claim without relying on retracted source."])
+
+    for r in replications:
+        rid = r["replication_id"]
+        if r.get("computed_independence") == "DEPENDENT":
+            add("REPLICATION", rid, "DEPENDENT_REPLICATION",
+                "Replication may not be independent due to shared dataset/author/lab.",
+                [f"same_dataset={r.get('same_dataset')}", f"same_author={r.get('same_author')}", f"same_lab={r.get('same_lab')}"],
+                ["Metadata may be incomplete."],
+                ["hidden cohort sharing", "data provenance"],
+                ["Independent data source and author group confirm replication."])
+        if r.get("result_direction") == "CONTRADICTS":
+            add("REPLICATION", rid, "FAILED_REPLICATION_NOT_FRAUD",
+                "Contradicting replication may reflect population/method/power differences, not misconduct.",
+                [f"result_direction={r.get('result_direction')}"],
+                ["Strong evidence of original data fabrication."],
+                ["moderators", "statistical power", "implementation differences"],
+                ["Original authors admit error or official misconduct finding exists."])
+
+    for s in integrity_signals:
+        sid = s["signal_id"]
+        if s.get("severity") in {"HIGH", "CRITICAL"}:
+            add("INTEGRITY_SIGNAL", sid, "MISCONDUCT_CANDIDATE",
+                "Signal may warrant research-integrity review.",
+                [s.get("type", "")],
+                ["Benign explanations not exhausted."],
+                ["official investigation", "raw data", "image provenance"],
+                ["Contextual review explains signal as normal scholarly practice/error."])
+            add("INTEGRITY_SIGNAL", sid, "BENIGN_EXPLANATION",
+                "Signal may be caused by methods language, quotation, self-reuse, pipeline bug, or contextual reuse.",
+                ["Many integrity signals have benign explanations."],
+                ["Coordinated anomalous patterns strengthen misconduct hypothesis."],
+                ["detector false positive rate", "source norms"],
+                ["Independent forensic review finds no anomaly."])
+
+    for c in contradictions:
+        cid = c["contradiction_id"]
+        add("CONTRADICTION", cid, "RESOLUTION",
+            "Contradiction may be resolved by authoritative version, primary source, or temporal context.",
+            [c.get("type", "")],
+            ["Majority/copy count is not truth."],
+            ["primary registry", "publisher record", "version history"],
+            ["Authoritative metadata resolves conflict."])
+
+    return hyp[:2000]
+
+
+# --------------------------------------------------------------------
+# Gaps / actions / handoffs
+# --------------------------------------------------------------------
+
+def build_gaps(
+    publications: Dict[str, Dict[str, Any]],
+    author_identities: List[Dict[str, Any]],
+    claims: List[Dict[str, Any]],
+    citations: List[Dict[str, Any]],
+    replications: List[Dict[str, Any]],
+    datasets: Dict[str, Dict[str, Any]],
+    repositories: Dict[str, Dict[str, Any]],
+    consensus: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    version_families: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    gaps = []
+
+    for ident in author_identities:
+        if ident.get("resolution_state") in {"UNRESOLVED", "POSSIBLE_MATCH"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "author", ident["identity_id"]),
+                "type": "AUTHOR_IDENTITY_UNRESOLVED",
+                "importance": "MEDIUM",
+                "identity_id": ident["identity_id"],
+                "recommended_source": "ORCID, institutional profile, publication history, coauthor/topic corroboration.",
+                "specialist": "ACADEMICINT",
+                "expected_information_value": "Prevent false author merge/split.",
+            })
+
+    for pid, p in publications.items():
+        if not p.get("doi"):
+            gaps.append({
+                "gap_id": stable_id("GAP", "doi", pid),
+                "type": "DOI_MISSING",
+                "importance": "LOW",
+                "publication_id": pid,
+                "recommended_source": "DOI registry, publisher record.",
+                "specialist": "ACADEMICINT",
+                "expected_information_value": "Strengthen persistent identifier resolution.",
+            })
+        if p.get("peer_review_status") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "peer_review", pid),
+                "type": "PEER_REVIEW_STATUS_UNCLEAR",
+                "importance": "MEDIUM",
+                "publication_id": pid,
+                "recommended_source": "Journal/conference policy, publisher metadata, open peer-review records where lawful.",
+                "specialist": "ACADEMICINT",
+                "expected_information_value": "Avoid false peer-review claims.",
+            })
+        if p.get("version_of_record_status") == "UNKNOWN" and p.get("version_family_id"):
+            gaps.append({
+                "gap_id": stable_id("GAP", "vor", pid),
+                "type": "VERSION_OF_RECORD_UNRESOLVED",
+                "importance": "MEDIUM",
+                "publication_id": pid,
+                "recommended_source": "Publisher version history, DOI registration, repository metadata.",
+                "specialist": "ACADEMICINT / DOCINT",
+                "expected_information_value": "Prevent version double-counting.",
+            })
+        if p.get("status") == "RETRACTED" and not p.get("retraction_ids"):
+            gaps.append({
+                "gap_id": stable_id("GAP", "retraction_reason", pid),
+                "type": "RETRACTION_REASON_UNCLEAR",
+                "importance": "HIGH",
+                "publication_id": pid,
+                "recommended_source": "Publisher retraction notice, Retraction Watch-like public records where authorized.",
+                "specialist": "ACADEMICINT / HUMAN_REVIEW",
+                "expected_information_value": "Distinguish error/misconduct/duplicate/ethical issues.",
+            })
+
+    for fam in version_families:
+        if fam.get("state") == "VERSION_OF_RECORD_UNRESOLVED":
+            gaps.append({
+                "gap_id": stable_id("GAP", "family_vor", fam["family_id"]),
+                "type": "PUBLICATION_VERSION_FAMILY_UNRESOLVED",
+                "importance": "MEDIUM",
+                "version_family_id": fam["family_id"],
+                "recommended_source": "DOI registry, publisher, preprint server version history.",
+                "specialist": "ACADEMICINT",
+                "expected_information_value": "Resolve preprint/journal/conference relationships.",
+            })
+
+    for c in claims:
+        if not c.get("publication_id"):
+            gaps.append({
+                "gap_id": stable_id("GAP", "claim_pub", c["claim_id"]),
+                "type": "CLAIM_PUBLICATION_LINK_UNRESOLVED",
+                "importance": "HIGH",
+                "claim_id": c["claim_id"],
+                "recommended_source": "Publication metadata, DOI, text locator.",
+                "specialist": "ACADEMICINT / DOCINT",
+                "expected_information_value": "Bind claim to source.",
+            })
+        if c.get("study_design") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "design", c["claim_id"]),
+                "type": "STUDY_DESIGN_UNCLEAR",
+                "importance": "MEDIUM",
+                "claim_id": c["claim_id"],
+                "recommended_source": "Methods section, protocol, registration.",
+                "specialist": "ACADEMICINT",
+                "expected_information_value": "Avoid causal overclaim.",
+            })
+
+    for cit in citations:
+        if cit.get("purpose_candidate") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "citation_context", cit["citation_id"]),
+                "type": "CITATION_CONTEXT_UNKNOWN",
+                "importance": "MEDIUM",
+                "citation_id": cit["citation_id"],
+                "recommended_source": "Citing paper context, sentence-level citation function.",
+                "specialist": "ACADEMICINT / DOCINT",
+                "expected_information_value": "Distinguish support/criticism/method/background.",
+            })
+
+    for r in replications:
+        if r.get("computed_independence") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "rep_independence", r["replication_id"]),
+                "type": "REPLICATION_INDEPENDENCE_UNKNOWN",
+                "importance": "HIGH",
+                "replication_id": r["replication_id"],
+                "recommended_source": "Dataset provenance, lab/author overlap, cohort sharing, code/data availability.",
+                "specialist": "ACADEMICINT / DATASETINT",
+                "expected_information_value": "Avoid counting dependent analyses as independent replication.",
+            })
+
+    for did, d in datasets.items():
+        if d.get("availability") in {"NOT_AVAILABLE", "RESTRICTED", "UPON_REQUEST", "UNKNOWN"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "dataset", did),
+                "type": "DATASET_UNAVAILABLE_OR_RESTRICTED",
+                "importance": "MEDIUM",
+                "dataset_id": did,
+                "recommended_source": "Authorized data access process, repository metadata, DATASETINT.",
+                "specialist": "DATASETINT / ACADEMICINT",
+                "expected_information_value": "Assess whether exact dataset used can be verified.",
+            })
+
+    for rid, r in repositories.items():
+        if r.get("availability") in {"NOT_AVAILABLE", "RESTRICTED", "UPON_REQUEST", "UNKNOWN"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "repo", rid),
+                "type": "CODE_UNAVAILABLE_OR_RESTRICTED",
+                "importance": "MEDIUM",
+                "repository_id": rid,
+                "recommended_source": "Repository metadata, supplement, authorized code access.",
+                "specialist": "REPOINT / ACADEMICINT",
+                "expected_information_value": "Assess reproducibility without bypassing access controls.",
+            })
+
+    for c in consensus:
+        if c.get("consensus_state") in {"INSUFFICIENT_EVIDENCE", "WEAK_EVIDENCE"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "consensus", c["claim_group_id"]),
+                "type": "RESEARCH_CONSENSUS_INSUFFICIENT",
+                "importance": "HIGH",
+                "claim_group_id": c["claim_group_id"],
+                "recommended_source": "Independent replications, null results, registered reports, systematic search.",
+                "specialist": "ACADEMICINT",
+                "expected_information_value": "Avoid overstating scholarly agreement.",
+            })
+
+    for c in contradictions:
+        gaps.append({
+            "gap_id": stable_id("GAP", "contradiction", c["contradiction_id"]),
+            "type": "ACADEMIC_CONTRADICTION_UNRESOLVED",
+            "importance": "HIGH" if c.get("severity") == "MATERIAL" else "MEDIUM",
+            "contradiction_id": c["contradiction_id"],
+            "recommended_source": "Authoritative publisher/DOI registry, version history, primary data.",
+            "specialist": "ACADEMICINT / HUMAN_REVIEW",
+            "expected_information_value": "Resolve conflicting scholarly metadata/claims.",
+        })
+
+    return gaps[:1000]
+
+
+def build_next_actions(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    actions = []
+    priority_map = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    for g in gaps:
+        t = g.get("type")
+        if t == "AUTHOR_IDENTITY_UNRESOLVED":
+            action = "Resolve author using ORCID/institution/coauthor/topic evidence; do not merge by name alone."
+        elif t == "DOI_MISSING":
+            action = "Retrieve DOI/persistent identifier from publisher or DOI registry."
+        elif t == "PEER_REVIEW_STATUS_UNCLEAR":
+            action = "Verify venue review policy; do not infer peer review from PDF appearance."
+        elif t in {"VERSION_OF_RECORD_UNRESOLVED", "PUBLICATION_VERSION_FAMILY_UNRESOLVED"}:
+            action = "Resolve preprint/accepted/version-of-record relationships before counting outputs or citations."
+        elif t == "RETRACTION_REASON_UNCLEAR":
+            action = "Retrieve official retraction notice and assess claim-level impact; do not label fraud without evidence."
+        elif t == "CLAIM_PUBLICATION_LINK_UNRESOLVED":
+            action = "Bind claim to publication and text locator; do not fabricate citation."
+        elif t == "STUDY_DESIGN_UNCLEAR":
+            action = "Extract study design/method from authorized full text or protocol before causal interpretation."
+        elif t == "CITATION_CONTEXT_UNKNOWN":
+            action = "Inspect citation context to distinguish support/criticism/method/background."
+        elif t == "REPLICATION_INDEPENDENCE_UNKNOWN":
+            action = "Check dataset/cohort/lab/author overlap before treating replication as independent."
+        elif t == "DATASET_UNAVAILABLE_OR_RESTRICTED":
+            action = "Use authorized data-access process; do not bypass restrictions. Hand dataset quality to DATASETINT."
+        elif t == "CODE_UNAVAILABLE_OR_RESTRICTED":
+            action = "Use authorized repository/supplement; do not bypass access. Hand code provenance to REPOINT."
+        elif t == "RESEARCH_CONSENSUS_INSUFFICIENT":
+            action = "Search for independent replications/null results/registered reports; avoid overstating consensus."
+        elif t == "ACADEMIC_CONTRADICTION_UNRESOLVED":
+            action = "Resolve using authoritative publisher/DOI/version evidence; preserve conflicting claims."
+        else:
+            action = "Gather additional authorized scholarly evidence."
+
+        actions.append({
+            "action": action,
+            "gap_id": g.get("gap_id"),
+            "priority": g.get("importance", "MEDIUM"),
+            "expected_information_value": g.get("expected_information_value"),
+            "prohibited_alternatives": [
+                "Do not fabricate papers, DOIs, citations, datasets, results, or peer review.",
+                "Do not bypass paywalls or use stolen library/university credentials.",
+                "Do not deanonymize reviewers or dox researchers.",
+                "Do not manipulate citations or peer review.",
+                "Do not infer researcher ideology/sensitive traits from research topic.",
+            ],
+        })
+    actions.sort(key=lambda x: priority_map.get(x.get("priority", "LOW"), 9))
+    return actions[:300]
+
+
+def build_handoffs(
+    publications: Dict[str, Dict[str, Any]],
+    datasets: Dict[str, Dict[str, Any]],
+    repositories: Dict[str, Dict[str, Any]],
+    institutions: Dict[str, Dict[str, Any]],
+    grants: Dict[str, Dict[str, Any]],
+    integrity_signals: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    hands = []
+    seen = set()
+
+    def add(spec: str, reason: str, payload: Dict[str, Any]) -> None:
+        key = (spec, json_safe(payload))
+        if key in seen:
+            return
+        seen.add(key)
+        hands.append({"specialist": spec, "reason": reason, "payload": payload})
+
+    if datasets:
+        add("DATASETINT", "Dataset provenance/quality/licensing requires dataset specialist.", {
+            "dataset_ids": list(datasets.keys())[:100],
+        })
+    if repositories:
+        add("REPOINT", "Code repository identity/history requires repository specialist.", {
+            "repository_ids": list(repositories.keys())[:100],
+        })
+    if institutions:
+        add("ORGINT", "Institution/department/lab structure may require organizational intelligence.", {
+            "institution_ids": list(institutions.keys())[:100],
+        })
+    if grants:
+        add("FININT / CORPINT", "Funding/grant financial relationships may require finance/corporate specialist.", {
+            "grant_ids": list(grants.keys())[:100],
+        })
+    if any(s.get("type") in {"IMAGE_INTEGRITY_SIGNAL", "DUPLICATE_FIGURE_CANDIDATE"} for s in integrity_signals):
+        add("IMINT / DOCINT", "Image/figure integrity signals require document/image specialist review.", {
+            "signal_ids": [s["signal_id"] for s in integrity_signals if s.get("type") in {"IMAGE_INTEGRITY_SIGNAL", "DUPLICATE_FIGURE_CANDIDATE"}][:100],
+        })
+    if any(s.get("type") in {"STATISTICAL_ANOMALY", "DATA_INCONSISTENCY"} for s in integrity_signals):
+        add("HUMAN_REVIEW / RESEARCH_INTEGRITY_OFFICE", "Statistical/data anomalies require governed human integrity review.", {
+            "signal_ids": [s["signal_id"] for s in integrity_signals if s.get("type") in {"STATISTICAL_ANOMALY", "DATA_INCONSISTENCY"}][:100],
+        })
+    if contradictions:
+        add("HUMAN_REVIEW", "Material academic contradictions require human review before consequential claims.", {
+            "contradiction_ids": [c["contradiction_id"] for c in contradictions][:100],
+        })
+    if any(p.get("status") == "RETRACTED" for p in publications.values()):
+        add("ACADEMIC_INTEGRITY_REVIEW", "Retracted publications require claim-level impact review.", {
+            "publication_ids": [pid for pid, p in publications.items() if p.get("status") == "RETRACTED"][:100],
+        })
+    return hands
+
+
+# --------------------------------------------------------------------
+# Graph memory
+# --------------------------------------------------------------------
+
+class GraphMemory:
+    def __init__(self) -> None:
+        self.nodes: List[Dict[str, Any]] = []
+        self.edges: List[Dict[str, Any]] = []
+        self._node_ids: Set[str] = set()
+
+    def add_node(self, node_type: str, node_id: str, properties: Optional[Dict[str, Any]] = None) -> None:
+        if not node_id or node_id in self._node_ids:
+            return
+        self._node_ids.add(node_id)
+        self.nodes.append({"type": node_type, "id": node_id, "properties": properties or {}})
+
+    def add_edge(self, from_id: str, to_id: str, edge_type: str, properties: Optional[Dict[str, Any]] = None) -> None:
+        if not from_id or not to_id:
+            return
+        self.edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": edge_type,
+            "properties": properties or {},
+        })
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "nodes": self.nodes[:3000],
+            "edges": self.edges[:6000],
+            "note": "Academic graph preserves publication versions, author resolution uncertainty, citation context, replication independence, and integrity signals. It does not prove truth, misconduct, or current affiliation.",
+        }
+
+
+def build_graph_memory(
+    publications: Dict[str, Dict[str, Any]],
+    author_identities: List[Dict[str, Any]],
+    institutions: Dict[str, Dict[str, Any]],
+    journals: Dict[str, Dict[str, Any]],
+    conferences: Dict[str, Dict[str, Any]],
+    publishers: Dict[str, Dict[str, Any]],
+    claims: List[Dict[str, Any]],
+    citations: List[Dict[str, Any]],
+    datasets: Dict[str, Dict[str, Any]],
+    repositories: Dict[str, Dict[str, Any]],
+    grants: Dict[str, Dict[str, Any]],
+    funders: Dict[str, Dict[str, Any]],
+    corrections: List[Dict[str, Any]],
+    retractions: List[Dict[str, Any]],
+    eocs: List[Dict[str, Any]],
+    replications: List[Dict[str, Any]],
+    integrity_signals: List[Dict[str, Any]],
+    consensus: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    gaps: List[Dict[str, Any]],
+    version_families: List[Dict[str, Any]],
+    coauthorship: List[Dict[str, Any]],
+) -> GraphMemory:
+    g = GraphMemory()
+
+    for ident in author_identities:
+        g.add_node("Researcher", ident["identity_id"], {
+            "canonical_name": ident.get("canonical_name"),
+            "orcid": ident.get("orcid"),
+            "resolution_state": ident.get("resolution_state"),
+            "publication_count": len(ident.get("publication_ids", [])),
+        })
+
+    for iid, inst in institutions.items():
+        g.add_node("Institution", iid, {
+            "name": inst.get("name"),
+            "type": inst.get("type"),
+            "country": inst.get("country"),
+        })
+
+    for pid, p in publications.items():
+        g.add_node("Publication", pid, {
+            "title": p.get("title"),
+            "doi": p.get("doi"),
+            "type": p.get("publication_type"),
+            "version_state": p.get("version_state"),
+            "peer_review_status": p.get("peer_review_status"),
+            "status": p.get("status"),
+            "year": p.get("year"),
+            "version_family_id": p.get("version_family_id"),
+        })
+        if p.get("doi"):
+            g.add_node("DOI", p["doi"], {"publication_id": pid})
+            g.add_edge(pid, p["doi"], "HAS_DOI", {})
+        for aid in p.get("canonical_author_ids", []):
+            g.add_edge(aid, pid, "AUTHORED", {"original_author_ids": p.get("author_ids", [])})
+        if p.get("journal_id"):
+            g.add_edge(pid, p["journal_id"], "PUBLISHED_IN_JOURNAL", {})
+        if p.get("conference_id"):
+            g.add_edge(pid, p["conference_id"], "PUBLISHED_IN_CONFERENCE", {})
+        if p.get("publisher_id"):
+            g.add_edge(pid, p["publisher_id"], "PUBLISHED_BY", {})
+        for did in p.get("dataset_ids", []):
+            g.add_edge(pid, did, "USES_DATASET_CANDIDATE", {})
+        for rid in p.get("repository_ids", []):
+            g.add_edge(pid, rid, "USES_REPOSITORY_CANDIDATE", {})
+        for gid in p.get("grant_ids", []):
+            g.add_edge(pid, gid, "SUPPORTED_BY_GRANT_CANDIDATE", {})
+
+    for jid, j in journals.items():
+        g.add_node("Journal", jid, {"title": j.get("title"), "issn": j.get("issn"), "risk_state": j.get("risk_state")})
+    for cid, c in conferences.items():
+        g.add_node("Conference", cid, {"name": c.get("name"), "year": c.get("year")})
+    for pid, pub in publishers.items():
+        g.add_node("Publisher", pid, {"name": pub.get("name")})
+    for did, d in datasets.items():
+        g.add_node("Dataset", did, {"name": d.get("name"), "version": d.get("version"), "availability": d.get("availability")})
+    for rid, r in repositories.items():
+        g.add_node("Repository", rid, {"name": r.get("name"), "url": r.get("url"), "availability": r.get("availability")})
+    for gid, gr in grants.items():
+        g.add_node("Grant", gid, {"funder_id": gr.get("funder_id"), "program": gr.get("program")})
+        if gr.get("funder_id"):
+            g.add_edge(gid, gr["funder_id"], "FUNDED_BY", {})
+    for fid, f in funders.items():
+        g.add_node("Funder", fid, {"name": f.get("name"), "country": f.get("country")})
+
+    for fam in version_families:
+        g.add_node("WorkFamily", fam["family_id"], {
+            "primary_publication_id": fam.get("primary_publication_id"),
+            "version_of_record_id": fam.get("version_of_record_id"),
+            "state": fam.get("state"),
+        })
+        for pid in fam.get("publication_ids", []):
+            g.add_edge(pid, fam["family_id"], "VERSION_OF", {})
+
+    for c in claims:
+        g.add_node("Claim", c["claim_id"], {
+            "claim_group_id": c.get("claim_group_id"),
+            "claim_type": c.get("claim_type"),
+            "study_design": c.get("study_design"),
+            "publication_id": c.get("publication_id"),
+        })
+        if c.get("publication_id"):
+            g.add_edge(c["publication_id"], c["claim_id"], "MAKES_CLAIM", {})
+
+    for cit in citations:
+        g.add_edge(cit["citing_publication_id"], cit["cited_publication_id"], "CITES", {
+            "citation_id": cit["citation_id"],
+            "purpose": cit.get("purpose_candidate"),
+            "self_citation": cit.get("author_self_citation"),
+        })
+
+    for corr in corrections:
+        g.add_node("Correction", corr["correction_id"], {"type": corr.get("type"), "date": iso(corr.get("date"))})
+        if corr.get("publication_id"):
+            g.add_edge(corr["correction_id"], corr["publication_id"], "CORRECTS", {})
+    for ret in retractions:
+        g.add_node("Retraction", ret["retraction_id"], {"date": iso(ret.get("date")), "reason": ret.get("reason")})
+        if ret.get("publication_id"):
+            g.add_edge(ret["retraction_id"], ret["publication_id"], "RETRACTS", {})
+    for eoc in eocs:
+        g.add_node("ExpressionOfConcern", eoc["eoc_id"], {"date": iso(eoc.get("date"))})
+        if eoc.get("publication_id"):
+            g.add_edge(eoc["eoc_id"], eoc["publication_id"], "FLAGS_CONCERN", {})
+
+    for rep in replications:
+        g.add_node("Replication", rep["replication_id"], {
+            "result_direction": rep.get("result_direction"),
+            "independence": rep.get("computed_independence"),
+        })
+        if rep.get("replication_publication_id") and rep.get("original_publication_id"):
+            g.add_edge(rep["replication_publication_id"], rep["original_publication_id"], "REPLICATES_CANDIDATE", {
+                "replication_id": rep["replication_id"],
+            })
+
+    for sig in integrity_signals:
+        g.add_node("IntegritySignal", sig["signal_id"], {
+            "type": sig.get("type"),
+            "severity": sig.get("severity"),
+            "publication_id": sig.get("publication_id"),
+        })
+        if sig.get("publication_id"):
+            g.add_edge(sig["signal_id"], sig["publication_id"], "SIGNAL_ON", {})
+
+    for cons in consensus:
+        g.add_node("ConsensusAssessment", cons["claim_group_id"], {
+            "state": cons.get("consensus_state"),
+            "independent_support_count": len(cons.get("independent_support_publication_ids", [])),
+        })
+        for cid in cons.get("claim_ids", [])[:100]:
+            g.add_edge(cid, cons["claim_group_id"], "ASSESSED_BY_CONSENSUS", {})
+
+    for c in contradictions:
+        g.add_node("Contradiction", c["contradiction_id"], {
+            "type": c.get("type"),
+            "severity": c.get("severity"),
+        })
+
+    for gap in gaps[:1000]:
+        g.add_node("Gap", gap["gap_id"], {
+            "type": gap.get("type"),
+            "importance": gap.get("importance"),
+        })
+
+    for edge in coauthorship:
+        g.add_edge(edge["author_a"], edge["author_b"], "COAUTHORED_WITH", {
+            "joint_publication_count": edge.get("joint_publication_count"),
+        })
+
+    return g
+
+
+def dual_ai_review_stub(
+    consensus: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    integrity_signals: List[Dict[str, Any]],
+    gaps: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    review = {
+        "status": "INSUFFICIENT_EVIDENCE",
+        "primary_conclusions": [],
+        "skeptic_challenges": [],
+        "comparison": "NO_SECOND_MODEL_CONFIGURED",
+        "notes": [
+            "This starter does not call an independent second model.",
+            "AI agreement is not scholarly replication.",
+            "Human review is required for misconduct allegations, reputation-affecting claims, or consequential literature decisions.",
+        ],
+    }
+    if consensus:
+        review["primary_conclusions"].append(f"{len(consensus)} claim-group consensus assessment(s) generated from provided evidence.")
+        review["skeptic_challenges"].append("Check version double-counting, shared datasets, citation-as-confirmation errors, and publication bias.")
+    if contradictions:
+        review["primary_conclusions"].append(f"{len(contradictions)} academic contradiction candidate(s) detected.")
+        review["skeptic_challenges"].append("Contradictions may reflect population/method/time differences, not error or misconduct.")
+    if integrity_signals:
+        review["primary_conclusions"].append(f"{len(integrity_signals)} research-integrity signal(s) detected.")
+        review["skeptic_challenges"].append("Integrity signals are not misconduct findings; benign explanations must be exhausted.")
+    if any(g.get("type") == "REPLICATION_INDEPENDENCE_UNKNOWN" for g in gaps):
+        review["primary_conclusions"].append("Some replication independence remains unresolved.")
+        review["skeptic_challenges"].append("Do not count same-dataset/same-cohort analyses as independent confirmation.")
+    if review["primary_conclusions"]:
+        review["status"] = "PARTIAL_AGREEMENT"
+    return review
+
+
+# --------------------------------------------------------------------
+# Result assembly
+# --------------------------------------------------------------------
+
+def empty_result(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "case_id": manifest.get("case_id", "CASE-UNKNOWN"),
+        "task_id": manifest.get("task_id", "TASK-UNKNOWN"),
+        "objective": manifest.get("objective", ""),
+        "questions": manifest.get("questions", []) or [],
+        "generated_at": utc_now(),
+        "version": VERSION,
+        "source_ids": [],
+        "evidence_ids": [],
+        "researchers": [],
+        "author_identities": [],
+        "orcids": [],
+        "name_variants": [],
+        "institutions": [],
+        "departments": [],
+        "labs": [],
+        "research_groups": [],
+        "affiliations": [],
+        "affiliation_history": [],
+        "publications": [],
+        "publication_types": [],
+        "dois": [],
+        "publication_versions": [],
+        "version_families": [],
+        "preprints": [],
+        "versions_of_record": [],
+        "peer_review_states": [],
+        "journals": [],
+        "conferences": [],
+        "publishers": [],
+        "claims": [],
+        "claim_types": [],
+        "methodologies": [],
+        "study_designs": [],
+        "samples": [],
+        "effect_context": [],
+        "datasets": [],
+        "dataset_versions": [],
+        "repositories": [],
+        "software": [],
+        "models": [],
+        "benchmarks": [],
+        "grants": [],
+        "funders": [],
+        "funding_relationships": [],
+        "conflict_of_interest_context": [],
+        "ethics_context": [],
+        "citations": [],
+        "citation_contexts": [],
+        "self_citations": [],
+        "citation_networks": {},
+        "coauthorship_networks": [],
+        "collaboration_networks": [],
+        "research_fields": [],
+        "topics": [],
+        "topic_trends": {},
+        "corrections": [],
+        "retractions": [],
+        "expressions_of_concern": [],
+        "replications": [],
+        "reproducibility_context": [],
+        "research_integrity_signals": [],
+        "research_consensus": [],
+        "research_gaps": [],
+        "institutional_output": [],
+        "bibliometrics": {},
+        "timeline_updates": [],
+        "observations": [],
+        "candidate_facts": [],
+        "supported_facts": [],
+        "partial_facts": [],
+        "disputed_facts": [],
+        "source_reliability": [],
+        "source_bias": [],
+        "source_limitations": [],
+        "source_pedigree": [],
+        "source_independence": [],
+        "contradictions": [],
+        "hypotheses": [],
+        "ach_matrix": [],
+        "falsification_results": [],
+        "privacy_flags": [],
+        "unknowns": [],
+        "knowledge_gaps": [],
+        "recommended_next_actions": [],
+        "specialist_handoffs": [],
+        "limitations": [],
+        "dual_ai_review": {},
+        "graph_memory": {},
+        "status": "PARTIAL",
+    }
+
+
+def summarize_publication(p: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(p)
+    out["publication_date"] = iso(p.get("publication_date"))
+    out["online_date"] = iso(p.get("online_date"))
+    return out
+
+
+def compute_source_bias(sources: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for sid, src in sources.items():
+        st = normalize_text(src.get("source_type", "unknown")).lower()
+        bias = []
+        if st in {"preprint_server", "bibliographic_index", "author_profile", "lab_page"}:
+            bias.append("coverage/self-reporting bias; metadata may be incomplete or outdated")
+        if st in {"media_summary", "secondary_review"}:
+            bias.append("selection/interpretation bias; may simplify or overstate findings")
+        if st in {"official_publisher", "version_of_record", "doi_registry"}:
+            bias.append("publication bias; positive/significant results may be overrepresented")
+        if st in {"grant_database", "funder_record"}:
+            bias.append("funding visibility bias; not all support may be disclosed uniformly")
+        out.append({
+            "source_id": sid,
+            "source_type": st,
+            "potential_bias": bias,
+            "limitations": src.get("limitations", []),
+        })
+    return out
+
+
+def compute_bibliometrics(
+    publications: Dict[str, Dict[str, Any]],
+    citations: List[Dict[str, Any]],
+    author_identities: List[Dict[str, Any]],
+    citation_network: Dict[str, Any],
+) -> Dict[str, Any]:
+    pub_count = len(publications)
+    cited_pubs = {c["cited_publication_id"] for c in citations}
+    unique_cited = len(cited_pubs)
+    by_year = Counter(p.get("year") for p in publications.values() if p.get("year"))
+    author_pub_counts = {ident["identity_id"]: len(ident.get("publication_ids", [])) for ident in author_identities}
+    return {
+        "publication_count": pub_count,
+        "cited_publication_count": unique_cited,
+        "citation_count": len(citations),
+        "publications_by_year": dict(sorted(by_year.items())),
+        "author_publication_counts": author_pub_counts,
+        "self_citation_count": citation_network.get("self_citation_count", 0),
+        "limitations": [
+            "Bibliometrics are coverage-dependent and field-normalization matters.",
+            "h-index-like metrics are not universal researcher quality.",
+            "Citation count is not quality; review papers and controversial papers can accumulate citations.",
+        ],
+    }
+
+
+def compute_institutional_output(
+    publications: Dict[str, Dict[str, Any]],
+    affiliations: List[Dict[str, Any]],
+    institutions: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    inst_pubs: Dict[str, Set[str]] = defaultdict(set)
+    for aff in affiliations:
+        iid = aff.get("institution_id")
+        pid = aff.get("publication_id")
+        if iid and pid:
+            inst_pubs[iid].add(pid)
+    out = []
+    for iid, pids in inst_pubs.items():
+        inst = institutions.get(iid, {})
+        years = [publications[pid].get("year") for pid in pids if pid in publications and publications[pid].get("year")]
+        out.append({
+            "institution_id": iid,
+            "institution_name": inst.get("name"),
+            "publication_count": len(pids),
+            "first_year": min(years) if years else None,
+            "last_year": max(years) if years else None,
+            "limitations": [
+                "Affiliation on publications is not current employment.",
+                "Output volume is not research quality; institution size/field/mission differ.",
+            ],
+        })
+    return sorted(out, key=lambda x: x.get("publication_count", 0), reverse=True)
+
+
+def finalize_status(
+    result: Dict[str, Any],
+    publications: Dict[str, Dict[str, Any]],
+    auth_ok: bool,
+    policy_blocked: List[str],
+) -> str:
+    if policy_blocked:
+        return "POLICY_BLOCKED"
+    if not auth_ok:
+        return "BLOCKED_PERMISSION"
+    if not publications:
+        return "INSUFFICIENT_INPUT"
+    if result.get("contradictions"):
+        return "PARTIAL"
+    if result.get("knowledge_gaps"):
+        return "PARTIAL"
+    if any(p.get("status") in {"RETRACTED", "EXPRESSION_OF_CONCERN"} for p in publications.values()):
+        return "PARTIAL"
+    return "SUCCEEDED"
+
+
+def analyze_academicint_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    result = empty_result(manifest)
+
+    policy_blocked = policy_screen(manifest)
+    if policy_blocked:
+        result["status"] = "POLICY_BLOCKED"
+        result["violations"] = policy_blocked
+        result["limitations"] = [
+            "ACADEMICINT does not fabricate scholarship, manipulate peer review/citations, bypass access controls, deanonymize reviewers, dox researchers, or enable plagiarism/paper-mill/exam cheating."
+        ]
+        return result
+
+    auth_ok, auth_reasons = authorization_check(manifest)
+    if not auth_ok:
+        result["status"] = "BLOCKED_PERMISSION"
+        result["limitations"] = auth_reasons
+        return result
+
+    sources = ingest_sources(manifest)
+    source_roots = build_source_roots(sources)
+
+    authors: Dict[str, Dict[str, Any]] = {}
+    affiliations: List[Dict[str, Any]] = []
+    institutions: Dict[str, Dict[str, Any]] = {}
+    journals: Dict[str, Dict[str, Any]] = {}
+    conferences: Dict[str, Dict[str, Any]] = {}
+    publishers: Dict[str, Dict[str, Any]] = {}
+    grants: Dict[str, Dict[str, Any]] = {}
+    funders: Dict[str, Dict[str, Any]] = {}
+    datasets: Dict[str, Dict[str, Any]] = {}
+    repositories: Dict[str, Dict[str, Any]] = {}
+
+    publications = ingest_publications(
+        manifest,
+        authors,
+        affiliations,
+        institutions,
+        journals,
+        conferences,
+        publishers,
+        grants,
+        funders,
+        datasets,
+        repositories,
+    )
+    lookup = build_publication_lookup(publications)
+
+    # Explicit entities from manifest.
+    for inst in manifest.get("institutions", []) or []:
+        ensure_institution(institutions, inst, source_list(inst.get("source_ids", []), inst.get("source_id")), "explicit institution record")
+    for j in manifest.get("journals", []) or []:
+        ensure_journal(journals, j, publishers, source_list(j.get("source_ids", []), j.get("source_id")))
+    for c in manifest.get("conferences", []) or []:
+        ensure_conference(conferences, c, publishers, source_list(c.get("source_ids", []), c.get("source_id")))
+    for pub in manifest.get("publishers", []) or []:
+        ensure_publisher(publishers, pub, source_list(pub.get("source_ids", []), pub.get("source_id")))
+    for d in manifest.get("datasets", []) or []:
+        ensure_dataset(datasets, d, None, source_list(d.get("source_ids", []), d.get("source_id")))
+    for r in manifest.get("repositories", []) or []:
+        ensure_repository(repositories, r, None, source_list(r.get("source_ids", []), r.get("source_id")))
+    for g in manifest.get("grants", []) or []:
+        ensure_grant(grants, funders, g, None, source_list(g.get("source_ids", []), g.get("source_id")))
+    for f in manifest.get("funders", []) or []:
+        ensure_funder(funders, f, source_list(f.get("source_ids", []), f.get("source_id")))
+
+    claims = ingest_claims(manifest, publications, lookup)
+    citations = ingest_citations(manifest, publications, lookup)
+    corrections, retractions, eocs = ingest_lifecycle_records(manifest, publications, lookup)
+    replications = ingest_replications(manifest, publications, lookup, claims)
+    integrity_signals = ingest_integrity_signals(manifest, publications, lookup, claims)
+
+    author_identities, canonical_map = resolve_authors(authors, publications)
+    version_families = cluster_publications(publications)
+    enrich_citations(citations, publications)
+    citation_network = build_citation_network(citations)
+    coauthorship = build_coauthorship_network(publications)
+    topic_trends = build_topic_trends(publications)
+    integrity_signals = detect_integrity_signals(publications, citations, version_families, claims, source_roots, integrity_signals)
+    replications = analyze_replications(replications, publications, source_roots)
+    consensus = assess_claim_consensus(claims, citations, replications, publications, sources, source_roots, integrity_signals)
+    contradictions = detect_contradictions(publications, citations, replications, consensus, version_families, integrity_signals)
+    hypotheses = build_hypotheses(consensus, contradictions, integrity_signals, replications)
+    gaps = build_gaps(publications, author_identities, claims, citations, replications, datasets, repositories, consensus, contradictions, version_families)
+    actions = build_next_actions(gaps)
+    handoffs = build_handoffs(publications, datasets, repositories, institutions, grants, integrity_signals, contradictions)
+    graph = build_graph_memory(
+        publications, author_identities, institutions, journals, conferences, publishers,
+        claims, citations, datasets, repositories, grants, funders, corrections, retractions,
+        eocs, replications, integrity_signals, consensus, contradictions, gaps, version_families,
+        coauthorship,
+    )
+    dual_review = dual_ai_review_stub(consensus, contradictions, integrity_signals, gaps)
+    bibliometrics = compute_bibliometrics(publications, citations, author_identities, citation_network)
+    institutional_output = compute_institutional_output(publications, affiliations, institutions)
+
+    observations = [
+        f"Publications ingested/resolved: {len(publications)}.",
+        f"Author identities resolved: {len(author_identities)}.",
+        f"Version families clustered: {len(version_families)}.",
+        f"Claims ingested: {len(claims)}.",
+        f"Citations ingested: {len(citations)}.",
+        f"Replications ingested: {len(replications)}.",
+        f"Corrections/retractions/EOCs: {len(corrections)}/{len(retractions)}/{len(eocs)}.",
+        f"Research-integrity signals: {len(integrity_signals)}.",
+        f"Claim-group consensus assessments: {len(consensus)}.",
+        f"Contradiction candidates: {len(contradictions)}.",
+        "No fabricated papers, DOIs, citations, datasets, results, peer review, or ethics approvals were generated.",
+        "No paywall bypass, stolen credentials, reviewer deanonymization, researcher doxxing, or citation manipulation was performed.",
+        "Publication is not automatic validation; peer review is not automatic truth; citation is not automatic endorsement.",
+        "Version families were used to avoid double-counting preprint/journal/conference variants.",
+        "Source independence and replication independence were assessed separately from raw counts.",
+    ]
+
+    unknowns = []
+    for ident in author_identities:
+        if ident.get("resolution_state") == "UNRESOLVED":
+            unknowns.append(f"Author identity {ident['identity_id']} unresolved.")
+    for pid, p in publications.items():
+        if p.get("version_of_record_status") == "UNKNOWN":
+            unknowns.append(f"Publication {pid} version-of-record status unresolved.")
+        if p.get("peer_review_status") == "UNKNOWN":
+            unknowns.append(f"Publication {pid} peer-review status unresolved.")
+    for r in replications:
+        if r.get("computed_independence") == "UNKNOWN":
+            unknowns.append(f"Replication {r['replication_id']} independence unresolved.")
+    unknowns.append("Database coverage may omit null results, preprints, non-English literature, or paywalled records.")
+    unknowns.append("Research topic does not reveal researcher belief, ideology, or personal attributes.")
+    result["unknowns"] = list(dict.fromkeys(unknowns))[:500]
+
+    result["researchers"] = author_identities
+    result["author_identities"] = author_identities
+    result["orcids"] = [
+        {"identity_id": ident["identity_id"], "orcid": ident.get("orcid"), "valid": ident.get("orcid_valid")}
+        for ident in author_identities if ident.get("orcid")
+    ]
+    result["name_variants"] = [
+        {"identity_id": ident["identity_id"], "name_variants": ident.get("name_variants", [])}
+        for ident in author_identities
+    ]
+    result["institutions"] = list(institutions.values())
+    result["affiliations"] = affiliations
+    result["affiliation_history"] = affiliations
+    result["publications"] = [summarize_publication(p) for p in publications.values()]
+    result["publication_types"] = [{"publication_id": pid, "type": p.get("publication_type")} for pid, p in publications.items()]
+    result["dois"] = [{"publication_id": pid, "doi": p.get("doi")} for pid, p in publications.items() if p.get("doi")]
+    result["publication_versions"] = [
+        {"publication_id": pid, "version_state": p.get("version_state"), "version_family_id": p.get("version_family_id")}
+        for pid, p in publications.items()
+    ]
+    result["version_families"] = version_families
+    result["preprints"] = [pid for pid, p in publications.items() if p.get("publication_type") == "PREPRINT" or p.get("version_state") == "PREPRINT"]
+    result["versions_of_record"] = [pid for pid, p in publications.items() if p.get("version_state") == "VERSION_OF_RECORD" or p.get("version_of_record_status") == "VERSION_OF_RECORD"]
+    result["peer_review_states"] = [{"publication_id": pid, "state": p.get("peer_review_status")} for pid, p in publications.items()]
+    result["journals"] = list(journals.values())
+    result["conferences"] = list(conferences.values())
+    result["publishers"] = list(publishers.values())
+    result["claims"] = claims
+    result["claim_types"] = [{"claim_id": c["claim_id"], "type": c.get("claim_type")} for c in claims]
+    result["methodologies"] = [{"claim_id": c["claim_id"], "method": c.get("method"), "study_design": c.get("study_design")} for c in claims]
+    result["study_designs"] = [{"claim_id": c["claim_id"], "design": c.get("study_design")} for c in claims]
+    result["samples"] = [{"claim_id": c["claim_id"], "sample_size": c.get("sample_size"), "population": c.get("population")} for c in claims]
+    result["effect_context"] = [{"claim_id": c["claim_id"], "effect_size": c.get("effect_size"), "uncertainty": c.get("uncertainty")} for c in claims]
+    result["datasets"] = list(datasets.values())
+    result["dataset_versions"] = [{"dataset_id": did, "version": d.get("version")} for did, d in datasets.items()]
+    result["repositories"] = list(repositories.values())
+    result["grants"] = list(grants.values())
+    result["funders"] = list(funders.values())
+    result["funding_relationships"] = [
+        {"grant_id": gid, "funder_id": g.get("funder_id"), "publication_ids": g.get("publication_ids", [])}
+        for gid, g in grants.items()
+    ]
+    result["citations"] = citations
+    result["citation_contexts"] = [{"citation_id": c["citation_id"], "purpose": c.get("purpose_candidate"), "context": c.get("context")} for c in citations]
+    result["self_citations"] = [c for c in citations if c.get("author_self_citation") or c.get("version_self_citation")]
+    result["citation_networks"] = citation_network
+    result["coauthorship_networks"] = coauthorship
+    result["collaboration_networks"] = coauthorship
+    result["research_fields"] = sorted({f for p in publications.values() for f in p.get("fields", [])})
+    result["topics"] = sorted({k for p in publications.values() for k in p.get("keywords", [])})
+    result["topic_trends"] = topic_trends
+    result["corrections"] = corrections
+    result["retractions"] = retractions
+    result["expressions_of_concern"] = eocs
+    result["replications"] = replications
+    result["reproducibility_context"] = [
+        {
+            "publication_id": pid,
+            "dataset_ids": p.get("dataset_ids", []),
+            "repository_ids": p.get("repository_ids", []),
+            "code_availability": "UNKNOWN" if not p.get("repository_ids") else "CODE_AVAILABLE_CANDIDATE",
+            "data_availability": "UNKNOWN" if not p.get("dataset_ids") else "DATA_AVAILABLE_CANDIDATE",
+        }
+        for pid, p in publications.items()
+    ]
+    result["research_integrity_signals"] = integrity_signals
+    result["research_consensus"] = consensus
+    result["institutional_output"] = institutional_output
+    result["bibliometrics"] = bibliometrics
+    result["contradictions"] = contradictions
+    result["hypotheses"] = hypotheses
+    result["falsification_results"] = [
+        {
+            "hypothesis_id": h["hypothesis_id"],
+            "subject_type": h.get("subject_type"),
+            "subject_id": h.get("subject_id"),
+            "opposition": h.get("opposition", []),
+            "falsification_conditions": h.get("falsification_conditions", []),
+        }
+        for h in hypotheses
+    ]
+    result["knowledge_gaps"] = gaps
+    result["recommended_next_actions"] = actions
+    result["specialist_handoffs"] = handoffs
+    result["dual_ai_review"] = dual_review
+    result["graph_memory"] = graph.to_dict()
+    result["observations"] = observations
+
+    for sid, src in sources.items():
+        result["source_ids"].append(sid)
+        result["source_reliability"].append({
+            "source_id": sid,
+            "source_type": src.get("source_type"),
+            "reliability": src.get("reliability"),
+        })
+        result["source_limitations"].append({
+            "source_id": sid,
+            "limitations": src.get("limitations", []),
+        })
+        result["source_pedigree"].append({
+            "source_id": sid,
+            "upstream_source_id": src.get("upstream_source_id"),
+            "root_source_id": source_roots.get(sid, sid),
+        })
+    result["source_bias"] = compute_source_bias(sources)
+
+    for pid, p in publications.items():
+        fam = source_family_ids(p.get("source_ids", []), source_roots)
+        max_rel, avg_rel = source_quality(p.get("source_ids", []), sources)
+        result["source_independence"].append({
+            "publication_id": pid,
+            "source_families": fam,
+            "state": independence_state(fam, sources, p.get("source_ids", [])),
+            "max_reliability": round(max_rel, 4),
+            "avg_reliability": round(avg_rel, 4),
+        })
+
+    for c in claims:
+        for evid in c.get("evidence_ids", []):
+            result["evidence_ids"].append(evid)
+
+    for cons in consensus:
+        if cons.get("consensus_state") in {"STRONG_CONSENSUS", "MODERATE_CONSENSUS"}:
+            result["supported_facts"].append({
+                "claim_group_id": cons["claim_group_id"],
+                "statement": f"Claim group has {cons['consensus_state']} based on provided independent evidence.",
+            })
+        elif cons.get("consensus_state") in {"EMERGING_CONSENSUS", "WEAK_EVIDENCE"}:
+            result["partial_facts"].append({
+                "claim_group_id": cons["claim_group_id"],
+                "statement": f"Claim group evidence is {cons['consensus_state']}: {cons.get('reason')}",
+            })
+        else:
+            result["candidate_facts"].append({
+                "claim_group_id": cons["claim_group_id"],
+                "statement": f"Claim group consensus unresolved: {cons.get('consensus_state')}",
+            })
+
+    for c in contradictions:
+        result["disputed_facts"].append({
+            "contradiction_id": c["contradiction_id"],
+            "statement": c.get("detail", "Academic contradiction candidate."),
+        })
+
+    for sig in integrity_signals:
+        result["candidate_facts"].append({
+            "signal_id": sig["signal_id"],
+            "statement": f"Research-integrity signal {sig.get('type')} detected; not misconduct finding.",
+        })
+
+    base_limits = [
+        "ACADEMICINT starter uses only provided/local authorized records; no live search, paywall bypass, private database access, or credential use was performed.",
+        "Publication is not automatic validation; peer review is not automatic truth.",
+        "Preprint is not automatically low quality; DOI is not quality; citation count is not quality.",
+        "Citation is not automatic endorsement; citation context matters.",
+        "Version families must be resolved to avoid double-counting preprint/journal/conference variants.",
+        "Author name alone is insufficient for identity resolution; ORCID is useful but self-maintained.",
+        "Affiliation on a publication is not current employment.",
+        "Co-authorship is scholarly collaboration, not personal relationship.",
+        "Funding is not automatic funder control or research invalidity.",
+        "Conflict of interest requires disclosure/context and does not automatically invalidate findings.",
+        "Retraction is not automatically fraud; expression of concern is not retraction.",
+        "Failed replication is not automatically misconduct; population/method/power differences matter.",
+        "Same dataset/cohort is not fully independent empirical replication.",
+        "Research-integrity signals are not misconduct findings and require human governance.",
+        "Research topic does not reveal researcher belief, ideology, or sensitive personal traits.",
+        "No fabricated papers, DOIs, citations, datasets, results, peer review, or ethics approvals were generated.",
+        "No citation manipulation, peer-review manipulation, reviewer deanonymization, doxxing, piracy, or exam cheating was performed.",
+    ]
+    if auth_reasons:
+        base_limits.extend(auth_reasons)
+    result["limitations"] = list(dict.fromkeys(base_limits))
+
+    result["status"] = finalize_status(result, publications, auth_ok, policy_blocked)
+    return result
+
+
+# --------------------------------------------------------------------
+# Report generation
+# --------------------------------------------------------------------
+
+def generate_report(result: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("# ACADEMICINT Evidence-Linked Research Intelligence Report")
+    lines.append("")
+    lines.append(f"- Case ID: `{result.get('case_id')}`")
+    lines.append(f"- Task ID: `{result.get('task_id')}`")
+    lines.append(f"- Generated: `{result.get('generated_at')}`")
+    lines.append(f"- Version: `{result.get('version')}`")
+    lines.append(f"- Status: `{result.get('status')}`")
+    lines.append("")
+
+    if result.get("status") == "POLICY_BLOCKED":
+        lines.append("## POLICY BLOCKED")
+        lines.append("The request violated ACADEMICINT hard restrictions:")
+        for v in result.get("violations", []):
+            lines.append(f"- `{v}`")
+        lines.append("")
+        lines.append("No academic intelligence was performed.")
+        return "\n".join(lines)
+
+    lines.append("## Objective")
+    lines.append(str(result.get("objective", "")))
+    lines.append("")
+
+    lines.append("## Required Analyst Summary")
+    for s in result.get("observations", [])[:80]:
+        lines.append(f"- {s}")
+    lines.append("")
+
+    lines.append("## Privacy / Research-Ethics Boundaries")
+    lines.append("- No fabricated papers, DOIs, citations, datasets, results, peer review, or ethics approvals.")
+    lines.append("- No plagiarism, paper-mill enablement, ghostwriting, or exam/assignment cheating.")
+    lines.append("- No citation rings, coercive citation, h-index gaming, or peer-review manipulation.")
+    lines.append("- No paywall bypass, stolen library credentials, piracy, or private lab access.")
+    lines.append("- No reviewer deanonymization, researcher doxxing, harassment, or sensitive-trait inference.")
+    lines.append("- Publication ≠ validation; peer review ≠ truth; citation ≠ endorsement; citation count ≠ quality.")
+    lines.append("- Preprint ≠ bad research; DOI ≠ quality; open access ≠ low quality; paywall ≠ high quality.")
+    lines.append("- Affiliation on paper ≠ current employment; co-authorship ≠ personal relationship.")
+    lines.append("- Retraction ≠ fraud; failed replication ≠ misconduct; integrity signal ≠ misconduct finding.")
+    lines.append("")
+
+    lines.append("## Researcher / Author Resolution")
+    for ident in result.get("author_identities", [])[:200]:
+        lines.append(f"### `{ident.get('identity_id')}`")
+        lines.append(f"- Canonical name: `{ident.get('canonical_name')}`")
+        lines.append(f"- ORCID: `{ident.get('orcid')}` valid={ident.get('orcid_valid')}")
+        lines.append(f"- Resolution: `{ident.get('resolution_state')}` confidence={ident.get('confidence_score')}")
+        lines.append(f"- Name variants: {', '.join(ident.get('name_variants', [])[:10]) or 'None'}")
+        lines.append(f"- Publications: {len(ident.get('publication_ids', []))}; years={ident.get('first_year')}-{ident.get('last_year')}")
+        lines.append(f"- Affiliations: {', '.join(ident.get('affiliation_ids', [])[:10]) or 'None'}")
+        lines.append("")
+
+    lines.append("## Institutions / Journals / Conferences / Publishers")
+    for inst in result.get("institutions", [])[:200]:
+        lines.append(f"- Institution `{inst.get('institution_id')}` name=`{inst.get('name')}` type=`{inst.get('type')}` country=`{inst.get('country')}`")
+    for j in result.get("journals", [])[:200]:
+        lines.append(f"- Journal `{j.get('journal_id')}` title=`{j.get('title')}` ISSN=`{j.get('issn')}` risk=`{j.get('risk_state')}`")
+    for c in result.get("conferences", [])[:200]:
+        lines.append(f"- Conference `{c.get('conference_id')}` name=`{c.get('name')}` year=`{c.get('year')}` review=`{c.get('review_context')}`")
+    for p in result.get("publishers", [])[:200]:
+        lines.append(f"- Publisher `{p.get('publisher_id')}` name=`{p.get('name')}`")
+    lines.append("")
+
+    lines.append("## Publication Inventory / Versions")
+    for p in result.get("publications", [])[:300]:
+        lines.append(f"### `{p.get('publication_id')}`")
+        lines.append(f"- Title: {p.get('title')}")
+        lines.append(f"- DOI: `{p.get('doi')}` type=`{p.get('publication_type')}` version=`{p.get('version_state')}`")
+        lines.append(f"- Peer review: `{p.get('peer_review_status')}` VoR: `{p.get('version_of_record_status')}` status=`{p.get('status')}`")
+        lines.append(f"- Year: `{p.get('year')}` publication_date=`{p.get('publication_date')}` online_date=`{p.get('online_date')}`")
+        lines.append(f"- Version family: `{p.get('version_family_id')}` primary=`{p.get('primary_publication_id')}`")
+        lines.append(f"- Authors: {', '.join(p.get('canonical_author_ids', [])[:20]) or 'None'}")
+        lines.append(f"- Datasets: {', '.join(p.get('dataset_ids', [])[:20]) or 'None'}")
+        lines.append(f"- Repositories: {', '.join(p.get('repository_ids', [])[:20]) or 'None'}")
+        lines.append(f"- Grants: {', '.join(p.get('grant_ids', [])[:20]) or 'None'}")
+        lines.append("")
+
+    lines.append("## Version Families")
+    for fam in result.get("version_families", [])[:300]:
+        lines.append(f"- `{fam.get('family_id')}` state=`{fam.get('state')}` primary=`{fam.get('primary_publication_id')}` VoR=`{fam.get('version_of_record_id')}` pubs={fam.get('publication_ids', [])[:20]}")
+    lines.append("")
+
+    lines.append("## Claims / Methods / Study Designs")
+    for c in result.get("claims", [])[:500]:
+        lines.append(f"### `{c.get('claim_id')}` group=`{c.get('claim_group_id')}`")
+        lines.append(f"- Publication: `{c.get('publication_id')}`")
+        lines.append(f"- Type: `{c.get('claim_type')}` design=`{c.get('study_design')}`")
+        lines.append(f"- Text: {c.get('text')}")
+        lines.append(f"- Population: {c.get('population')} variable={c.get('intervention_or_variable')} outcome={c.get('outcome')}")
+        lines.append(f"- Method: {c.get('method')} sample={c.get('sample_size')} effect={c.get('effect_size')} uncertainty={c.get('uncertainty')}")
+        lines.append("")
+
+    lines.append("## Citations / Self-Citations / Citation Network")
+    cn = result.get("citation_networks", {})
+    lines.append(f"- Total citations: {len(result.get('citations', []))}")
+    lines.append(f"- Self-citations: {cn.get('self_citation_count', 0)}")
+    lines.append(f"- Version self-citations: {cn.get('version_self_citation_count', 0)}")
+    lines.append(f"- Purpose counts: `{json.dumps(cn.get('purpose_counts', {}), ensure_ascii=False, default=str)}`")
+    for c in result.get("citations", [])[:500]:
+        lines.append(f"- `{c.get('citation_id')}` `{c.get('citing_publication_id')}` --CITES--> `{c.get('cited_publication_id')}` purpose=`{c.get('purpose_candidate')}` self={c.get('author_self_citation')} version_self={c.get('version_self_citation')}")
+        if c.get("context"):
+            lines.append(f"  - context: {c['context'][:500]}")
+    lines.append("")
+
+    lines.append("## Coauthorship / Collaboration Networks")
+    for e in result.get("coauthorship_networks", [])[:300]:
+        lines.append(f"- `{e.get('author_a')}` ↔ `{e.get('author_b')}` joint_publications={e.get('joint_publication_count')}")
+    lines.append("")
+
+    lines.append("## Topics / Fields / Trends")
+    tt = result.get("topic_trends", {})
+    lines.append(f"- Top keywords: `{json.dumps(tt.get('top_keywords', [])[:30], ensure_ascii=False, default=str)}`")
+    lines.append(f"- Top fields: `{json.dumps(tt.get('top_fields', [])[:30], ensure_ascii=False, default=str)}`")
+    lines.append(f"- Publications by year: `{json.dumps(tt.get('publications_by_year', {}), ensure_ascii=False, default=str)}`")
+    lines.append("")
+
+    lines.append("## Datasets / Repositories / Grants / Funders")
+    for d in result.get("datasets", [])[:200]:
+        lines.append(f"- Dataset `{d.get('dataset_id')}` name=`{d.get('name')}` version=`{d.get('version')}` availability=`{d.get('availability')}` license=`{d.get('license')}`")
+    for r in result.get("repositories", [])[:200]:
+        lines.append(f"- Repository `{r.get('repository_id')}` name=`{r.get('name')}` url=`{r.get('url')}` availability=`{r.get('availability')}` archived={r.get('archived')}")
+    for g in result.get("grants", [])[:200]:
+        lines.append(f"- Grant `{g.get('grant_id')}` funder=`{g.get('funder_id')}` program=`{g.get('program')}` publications={g.get('publication_ids', [])[:10]}")
+    for f in result.get("funders", [])[:200]:
+        lines.append(f"- Funder `{f.get('funder_id')}` name=`{f.get('name')}` country=`{f.get('country')}`")
+    lines.append("")
+
+    lines.append("## Corrections / Retractions / Expressions of Concern")
+    for c in result.get("corrections", [])[:200]:
+        lines.append(f"- Correction `{c.get('correction_id')}` pub=`{c.get('publication_id')}` type=`{c.get('type')}` date=`{c.get('date')}` reason={c.get('reason')}")
+    for r in result.get("retractions", [])[:200]:
+        lines.append(f"- Retraction `{r.get('retraction_id')}` pub=`{r.get('publication_id')}` date=`{r.get('date')}` reason={r.get('reason')}")
+    for e in result.get("expressions_of_concern", [])[:200]:
+        lines.append(f"- EoC `{e.get('eoc_id')}` pub=`{e.get('publication_id')}` date=`{e.get('date')}` reason={e.get('reason')}")
+    lines.append("")
+
+    lines.append("## Replications / Reproducibility")
+    for r in result.get("replications", [])[:300]:
+        lines.append(f"- Replication `{r.get('replication_id')}` original=`{r.get('original_publication_id')}` replication=`{r.get('replication_publication_id')}` direction=`{r.get('result_direction')}` independence=`{r.get('computed_independence')}`")
+        lines.append(f"  - same_dataset={r.get('same_dataset')} same_author={r.get('same_author')} same_lab={r.get('same_lab')}")
+    for rc in result.get("reproducibility_context", [])[:300]:
+        lines.append(f"- Reproducibility `{rc.get('publication_id')}` data={rc.get('data_availability')} code={rc.get('code_availability')} datasets={rc.get('dataset_ids')} repos={rc.get('repository_ids')}")
+    lines.append("")
+
+    lines.append("## Research-Integrity Signals")
+    for signal in result.get("research_integrity_signals", [])[:500]:
+        lines.append(f"- {json.dumps(signal, ensure_ascii=False, default=str)}")
+    for key in ("contradictions", "hypotheses", "knowledge_gaps", "recommended_next_actions",
+                "specialist_handoffs", "limitations"):
+        lines.append("\n## " + key.replace("_", " ").title())
+        for item in result.get(key, []):
+            lines.append("- " + json.dumps(item, ensure_ascii=False, default=str))
+    return "\n".join(lines) + "\n"

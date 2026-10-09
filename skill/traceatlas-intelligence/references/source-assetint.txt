@@ -1,0 +1,3158 @@
+#!/usr/bin/env python3
+"""
+TRACEATLAS ASSETINT — Safe Python Starter Implementation
+
+Purpose:
+  Evidence-first asset ownership / control / exposure intelligence for lawful,
+  authorized, privacy-aware decision support.
+
+Hard boundaries enforced in code:
+  - Does NOT locate, stalk, track, target, burgle, steal, repossess, sabotage,
+    or physically compromise private persons or assets.
+  - Does NOT provide weapon-targeting coordinates or attack/sabotage guidance.
+  - Does NOT scan, access, log into, bypass, modify, or exploit assets without
+    explicit authorization.
+  - Does NOT use stolen/exposed credentials or bypass cloud IAM.
+  - Does NOT assist asset concealment, sanctions evasion, tax evasion,
+    creditor evasion, or transfers designed to defeat lawful seizure.
+  - Treats registry records, filings, contracts, inventories, and documents as
+    evidence, not automatic truth.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import ipaddress
+import json
+import re
+import sys
+import unicodedata
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+VERSION = "0.1.0-assetint-safe-starter"
+FAR_PAST = datetime(1900, 1, 1, tzinfo=timezone.utc)
+
+# --------------------------------------------------------------------
+# Policy / authorization constants
+# --------------------------------------------------------------------
+
+ALLOWED_SCOPES = {
+    "public_and_authorized_records",
+    "authorized_case_evidence",
+    "authorized_asset_records",
+    "provided_records_only",
+}
+
+PROHIBITED_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"(?i)\b(locate|find|track|surveil|follow)\s+"
+            r"(private\s+(residence|home|individual|person)|personal\s+vehicle|real[- ]time|someone'?s\s+home)\b"
+        ),
+        "PRIVATE_TRACKING_OR_LOCATING",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(burglary|theft|robbery|repossession\s+tactic|break[- ]in|entry\s+point|"
+            r"security\s+weakness|guard\s+schedule|camera\s+blind|best\s+time\s+to\s+enter)\b"
+        ),
+        "PHYSICAL_INTRUSION_OR_TARGETING",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(sabotage|attack|target|weapon\s+targeting|strike\s+coordinates)\b.*"
+            r"\b(asset|facility|vehicle|vessel|aircraft|infrastructure|energy|telecom|data\s+center)\b"
+        ),
+        "ASSET_TARGETING_OR_SABOTAGE",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(scan|probe|enumerate|access|login|bypass|modify|exploit)\b.*"
+            r"\b(asset|cloud|IAM|property\s+system|endpoint|network|registry|repository)\b.*"
+            r"\b(without\s+authorization|illicit|stolen|unauthorized|covert)\b"
+        ),
+        "UNAUTHORIZED_ASSET_ACCESS",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(use|leverate|authenticate\s+with)\s+"
+            r"(stolen|leaked|exposed|shared)\s+(credential|password|token|api\s+key|ssh\s+key|cookie)\b"
+        ),
+        "STOLEN_CREDENTIAL_USE",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(conceal|hide|evade|avoid)\s+"
+            r"(asset|ownership|sanction|tax|creditor|seizure|beneficial\s+owner|lawful\s+process)\b"
+        ),
+        "ASSET_CONCEALMENT_OR_EVASION",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(transfer|move)\s+assets?\s+(to|into)\s+(defeat|avoid|evade)\s+"
+            r"(seizure|creditor|sanction|tax|lawful\s+process)\b"
+        ),
+        "ILLEGAL_ASSET_TRANSFER_ADVICE",
+    ),
+]
+
+ASSET_TYPES = {
+    "REAL_ESTATE", "LAND", "BUILDING", "OFFICE", "WAREHOUSE", "FACTORY", "PLANT",
+    "LAB", "DATA_CENTER", "VEHICLE", "VESSEL", "AIRCRAFT", "INDUSTRIAL_EQUIPMENT",
+    "MACHINERY", "ENERGY_ASSET", "TELECOM_ASSET", "IT_ASSET", "SERVER", "ENDPOINT",
+    "NETWORK_ASSET", "DOMAIN", "IP_ADDRESS", "PREFIX", "CLOUD_RESOURCE",
+    "SAAS_RESOURCE", "REPOSITORY", "SOFTWARE", "DATABASE", "DIGITAL_ACCOUNT",
+    "TRADEMARK", "PATENT", "LICENSE", "COPYRIGHT_ASSET", "SECURITY",
+    "SHAREHOLDING", "FUND_INTEREST", "CRYPTO_ASSET_REFERENCE", "OTHER", "UNKNOWN",
+}
+
+PRIVATE_SUBTYPES = {"PRIVATE_RESIDENCE", "HOME", "RESIDENCE", "PERSONAL_HOME"}
+
+ENTITY_TYPES = {
+    "PERSON", "ORGANIZATION", "COMPANY", "TRUST", "FUND", "SPV",
+    "GOVERNMENT", "OTHER", "UNKNOWN",
+}
+
+RELATIONSHIP_TYPES = {
+    "LEGAL_OWNER", "BENEFICIAL_OWNER", "CONTROLLER", "POSSESSOR", "CUSTODIAN",
+    "OPERATOR", "USER", "LESSEE", "LESSOR", "FINANCED_BY", "ENCUMBERED_BY",
+    "LIENHOLDER", "MORTGAGEE", "CHARGEHOLDER", "TRUSTEE", "NOMINEE",
+    "REGISTERED_TO", "ALLOCATED_TO", "HOSTED_BY", "USED_BY",
+    "CONTROLLED_BY_CANDIDATE", "OTHER", "UNKNOWN",
+}
+
+CONTROL_STATES = {
+    "LEGAL_CONTROL", "OPERATIONAL_CONTROL", "MANAGEMENT_CONTROL",
+    "CONTRACTUAL_CONTROL", "ECONOMIC_CONTROL_CANDIDATE", "UNKNOWN",
+}
+
+BENEFICIAL_STATES = {
+    "OFFICIALLY_REPORTED", "SUPPORTED", "PROBABLE", "POSSIBLE",
+    "DISPUTED", "UNKNOWN",
+}
+
+ASSET_STATUS = {
+    "ACTIVE", "INACTIVE", "SOLD", "TRANSFERRED", "LEASED", "MOTHBALLED",
+    "DECOMMISSIONED", "SCRAPPED", "SEIZED_REPORTED", "FORFEITED_REPORTED",
+    "UNDER_CONSTRUCTION", "PLANNED", "UNKNOWN",
+}
+
+CRITICALITY_STATES = {
+    "MISSION_CRITICAL", "BUSINESS_CRITICAL", "HIGH", "MEDIUM", "LOW",
+    "INFORMATIONAL", "UNKNOWN",
+}
+
+LOCATION_PRECISION = {
+    "COUNTRY", "REGION", "CITY", "SITE", "EXACT_COORDINATE", "UNKNOWN",
+}
+
+EXPOSURE_TYPES = {
+    "PUBLIC_RECORD_EXPOSURE", "INTERNET_EXPOSURE", "NETWORK_EXPOSURE",
+    "CLOUD_EXPOSURE", "PHYSICAL_EXPOSURE", "LOCATION_EXPOSURE",
+    "IDENTITY_EXPOSURE", "CREDENTIAL_EXPOSURE", "FINANCIAL_EXPOSURE",
+    "REGULATORY_EXPOSURE", "SANCTIONS_EXPOSURE", "DEPENDENCY_EXPOSURE",
+    "UNKNOWN",
+}
+
+EXPOSURE_STATES = {
+    "EXPOSED", "NOT_EXPOSED", "DISCOVERED_ONLY", "RESTRICTED",
+    "UNKNOWN",
+}
+
+VALUATION_TYPES = {
+    "PURCHASE_PRICE", "DECLARED_VALUE", "BOOK_VALUE", "MARKET_ESTIMATE",
+    "APPRAISED_VALUE", "INSURED_VALUE", "TAX_VALUE", "SOURCE_CLAIMED_VALUE",
+    "OTHER", "UNKNOWN",
+}
+
+ENCUMBRANCE_TYPES = {
+    "MORTGAGE", "CHARGE", "LIEN", "SECURITY_INTEREST", "LEASE", "PLEDGE",
+    "RESTRICTION", "OTHER", "UNKNOWN",
+}
+
+ENCUMBRANCE_STATUS = {
+    "ACTIVE", "RELEASED", "SATISFIED", "PARTIALLY_RELEASED",
+    "DISPUTED", "UNKNOWN",
+}
+
+TRANSFER_STATUS = {
+    "ANNOUNCED", "AGREED", "PENDING", "COMPLETED", "CANCELLED", "UNKNOWN",
+}
+
+LEASE_STATUS = {
+    "ACTIVE", "PENDING", "EXPIRED", "TERMINATED", "RELEASED", "UNKNOWN",
+}
+
+SANCTION_STATUS = {
+    "LISTED", "DELISTED", "SEIZED", "FORFEITED", "RESTRICTED",
+    "PENDING", "UNKNOWN",
+}
+
+REGULATORY_STATUS = {
+    "PROPOSED", "ADOPTED", "EFFECTIVE", "TRANSITION", "ENFORCEMENT",
+    "EXPIRED", "UNKNOWN",
+}
+
+SOURCE_RELIABILITY: Dict[str, float] = {
+    "official_title_registry": 0.92,
+    "official_transport_registry": 0.90,
+    "official_corporate_filing": 0.88,
+    "court_record": 0.86,
+    "authorized_asset_register": 0.86,
+    "authorized_cmdb": 0.84,
+    "authorized_cloud_inventory": 0.84,
+    "insurance_record": 0.78,
+    "financial_record": 0.78,
+    "public_patent_trademark": 0.80,
+    "company_statement": 0.70,
+    "commercial_database": 0.62,
+    "media": 0.45,
+    "social_post": 0.25,
+    "anonymous_source": 0.15,
+    "unknown": 0.30,
+}
+
+
+# --------------------------------------------------------------------
+# Generic helpers
+# --------------------------------------------------------------------
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def stable_id(prefix: str, *parts: Any) -> str:
+    raw = "|".join(str(json_safe(p)) for p in parts)
+    return f"{prefix}-{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:16]}"
+
+
+def json_safe(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {str(k): json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [json_safe(x) for x in obj]
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, bytes):
+        return obj.hex()
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    return str(obj)
+
+
+def normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    s = unicodedata.normalize("NFKC", str(value))
+    s = re.sub(r"[\u200b\u200c\u200d\u2060\ufeff]", "", s)
+    return s.strip()
+
+
+def iso(dt: Optional[datetime]) -> Optional[str]:
+    return dt.isoformat() if isinstance(dt, datetime) else None
+
+
+def parse_time(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    s = normalize_text(value)
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y-%m",
+        "%Y",
+    ):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+    return None
+
+
+def parse_float(value: Any) -> Optional[float]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = normalize_text(value).replace(",", "")
+    m = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", s)
+    if not m:
+        return None
+    try:
+        return float(m.group())
+    except Exception:
+        return None
+
+
+def source_list(*items: Any) -> List[str]:
+    out: List[str] = []
+    for it in items:
+        if it is None:
+            continue
+        if isinstance(it, list):
+            out.extend(normalize_text(x) for x in it if normalize_text(x))
+        else:
+            s = normalize_text(it)
+            if s:
+                out.append(s)
+    return list(dict.fromkeys(out))
+
+
+def unique_preserve(items: Iterable[Any]) -> List[Any]:
+    seen: Set[str] = set()
+    out = []
+    for item in items:
+        key = json.dumps(json_safe(item), sort_keys=True, ensure_ascii=False)
+        if key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def add_unique(lst: List[Any], item: Any) -> None:
+    if item is None:
+        return
+    key = json.dumps(json_safe(item), sort_keys=True, ensure_ascii=False)
+    for existing in lst:
+        if json.dumps(json_safe(existing), sort_keys=True, ensure_ascii=False) == key:
+            return
+    lst.append(item)
+
+
+def clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, value))
+
+
+def norm_enum(value: Any, allowed: Set[str], default: str = "UNKNOWN") -> str:
+    s = normalize_text(value).upper().replace("-", "_").replace(" ", "_")
+    return s if s in allowed else default
+
+
+def mask_value(value: Any, keep_prefix: int = 3, keep_suffix: int = 2) -> str:
+    s = normalize_text(value)
+    if not s:
+        return ""
+    if len(s) <= keep_prefix + keep_suffix:
+        return "*" * len(s)
+    return s[:keep_prefix] + "*" * (len(s) - keep_prefix - keep_suffix) + s[-keep_suffix:]
+
+
+def days_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
+    if not a or not b:
+        return None
+    return (b - a).days
+
+
+# --------------------------------------------------------------------
+# Identifier validators / normalizers
+# --------------------------------------------------------------------
+
+def vin_valid(vin: str) -> bool:
+    vin = re.sub(r"[^A-HJ-NPR-Z0-9]", "", vin.upper())
+    if len(vin) != 17:
+        return False
+    translit = {
+        "A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "G": 7, "H": 8,
+        "J": 1, "K": 2, "L": 3, "M": 4, "N": 5, "P": 7, "Q": 8, "R": 9,
+        "S": 2, "T": 3, "U": 4, "V": 5, "W": 6, "X": 7, "Y": 8, "Z": 9,
+    }
+    weights = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2]
+    total = 0
+    for i, ch in enumerate(vin):
+        if i == 8:
+            continue
+        v = int(ch) if ch.isdigit() else translit.get(ch, 0)
+        total += v * weights[i]
+    check = total % 11
+    check_char = "X" if check == 10 else str(check)
+    return vin[8] == check_char
+
+
+def imo_valid(imo: str) -> bool:
+    d = re.sub(r"\D", "", imo)
+    if len(d) != 7:
+        return False
+    total = sum(int(d[i]) * (8 - i) for i in range(6))
+    return total % 10 == int(d[6])
+
+
+def normalize_domain(value: Any) -> str:
+    s = normalize_text(value).lower()
+    s = re.sub(r"^https?://", "", s)
+    s = s.split("/")[0].split("?")[0].split("#")[0]
+    if "@" in s:
+        s = s.rsplit("@", 1)[-1]
+    s = s.strip().strip(".").rstrip(":")
+    return s
+
+
+def normalize_identifier(asset_type: str, value: Any) -> str:
+    s = normalize_text(value)
+    if not s:
+        return ""
+    if asset_type == "DOMAIN":
+        return normalize_domain(s)
+    if asset_type in {"IP_ADDRESS", "PREFIX", "IP"}:
+        try:
+            if "/" in s:
+                return str(ipaddress.ip_network(s, strict=False))
+            return str(ipaddress.ip_address(s))
+        except Exception:
+            return s.lower()
+    if asset_type == "VEHICLE":
+        return re.sub(r"[^A-Z0-9]", "", s.upper())
+    if asset_type == "VESSEL":
+        v = re.sub(r"[^A-Z0-9]", "", s.upper())
+        if v.startswith("IMO"):
+            v = v[3:]
+        return v
+    if asset_type == "AIRCRAFT":
+        return re.sub(r"[^A-Z0-9]", "", s.upper())
+    return re.sub(r"\s+", " ", s.upper())
+
+
+# --------------------------------------------------------------------
+# Policy / authorization
+# --------------------------------------------------------------------
+
+def collect_intent_text(manifest: Dict[str, Any]) -> str:
+    parts = [
+        normalize_text(manifest.get("objective", "")),
+        " ".join(normalize_text(q) for q in manifest.get("questions", []) or []),
+        " ".join(normalize_text(x) for x in manifest.get("requested_actions", []) or []),
+    ]
+    return " ".join(parts)
+
+
+def policy_screen(manifest: Dict[str, Any]) -> List[str]:
+    blob = collect_intent_text(manifest)
+    blocked = []
+    for pat, label in PROHIBITED_PATTERNS:
+        if pat.search(blob):
+            blocked.append(label)
+    return list(dict.fromkeys(blocked))
+
+
+def authorization_check(manifest: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    auth = manifest.get("authorization") or {}
+    reasons: List[str] = []
+
+    if not auth.get("approved"):
+        reasons.append("AUTHORIZATION_MISSING_OR_NOT_APPROVED")
+
+    scope = auth.get("scope", "provided_records_only")
+    if scope not in ALLOWED_SCOPES:
+        reasons.append("UNSUPPORTED_SCOPE")
+
+    model_mode = auth.get("model_mode", "LOCAL_ONLY")
+    if model_mode not in {"LOCAL_ONLY", "HYBRID", "CLOUD"}:
+        reasons.append("UNKNOWN_MODEL_MODE")
+    if model_mode == "CLOUD" and not auth.get("cloud_approved"):
+        reasons.append("CLOUD_PROCESSING_NOT_APPROVED")
+
+    if manifest.get("private_location_requested") and not auth.get("private_location_approved"):
+        reasons.append("PRIVATE_LOCATION_NOT_APPROVED")
+
+    if (manifest.get("cloud_inventory") or manifest.get("it_inventory")) and not auth.get("internal_asset_data_approved"):
+        reasons.append("INTERNAL_ASSET_DATA_NOT_APPROVED")
+
+    return len(reasons) == 0, reasons
+
+
+# --------------------------------------------------------------------
+# Sources / pedigree / independence
+# --------------------------------------------------------------------
+
+def collect_referenced_source_ids(obj: Any) -> Set[str]:
+    ids: Set[str] = set()
+
+    def walk(x: Any) -> None:
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if k in ("source_id", "source_ids"):
+                    if isinstance(v, list):
+                        ids.update(normalize_text(i) for i in v if normalize_text(i))
+                    else:
+                        s = normalize_text(v)
+                        if s:
+                            ids.add(s)
+                walk(v)
+        elif isinstance(x, list):
+            for i in x:
+                walk(i)
+
+    walk(obj)
+    return ids
+
+
+def ingest_sources(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    sources: Dict[str, Dict[str, Any]] = {}
+    for s in manifest.get("sources", []) or []:
+        sid = normalize_text(s.get("source_id"))
+        if not sid:
+            continue
+        stype = normalize_text(s.get("source_type", "unknown")).lower()
+        rel = s.get("reliability", SOURCE_RELIABILITY.get(stype, SOURCE_RELIABILITY["unknown"]))
+        sources[sid] = {
+            "source_id": sid,
+            "source_type": stype,
+            "upstream_source_id": normalize_text(s.get("upstream_source_id")) or None,
+            "reliability": clamp(float(rel)),
+            "observed_at": normalize_text(s.get("observed_at")) or None,
+            "limitations": list(s.get("limitations", []) or []),
+        }
+
+    for sid in collect_referenced_source_ids(manifest):
+        if sid not in sources:
+            sources[sid] = {
+                "source_id": sid,
+                "source_type": "unknown",
+                "upstream_source_id": None,
+                "reliability": SOURCE_RELIABILITY["unknown"],
+                "observed_at": None,
+                "limitations": ["Source referenced but not defined in manifest."],
+            }
+    return sources
+
+
+def resolve_source_root(sid: str, sources: Dict[str, Dict[str, Any]], memo: Dict[str, str], visiting: Set[str]) -> str:
+    if sid in memo:
+        return memo[sid]
+    if sid in visiting:
+        return sid
+    visiting.add(sid)
+    src = sources.get(sid)
+    if not src or not src.get("upstream_source_id"):
+        memo[sid] = sid
+    else:
+        memo[sid] = resolve_source_root(src["upstream_source_id"], sources, memo, visiting)
+    visiting.discard(sid)
+    return memo[sid]
+
+
+def build_source_roots(sources: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    memo: Dict[str, str] = {}
+    for sid in sources:
+        resolve_source_root(sid, sources, memo, set())
+    return memo
+
+
+def source_family_ids(source_ids: List[str], roots: Dict[str, str]) -> List[str]:
+    return list(dict.fromkeys(roots.get(sid, sid) for sid in source_ids))
+
+
+def source_quality(source_ids: List[str], sources: Dict[str, Dict[str, Any]]) -> Tuple[float, float]:
+    vals = [float(sources.get(sid, {}).get("reliability", SOURCE_RELIABILITY["unknown"])) for sid in source_ids]
+    if not vals:
+        return SOURCE_RELIABILITY["unknown"], SOURCE_RELIABILITY["unknown"]
+    return max(vals), sum(vals) / len(vals)
+
+
+def independence_state(families: List[str], sources: Dict[str, Dict[str, Any]], source_ids: List[str]) -> str:
+    if not source_ids:
+        return "UNKNOWN"
+    if len(families) <= 1:
+        return "DEPENDENT"
+    rels = [sources.get(sid, {}).get("reliability", 0.3) for sid in source_ids]
+    types = {sources.get(sid, {}).get("source_type", "unknown") for sid in source_ids}
+    if len(types) == 1 and max(rels) < 0.70:
+        return "PARTIALLY_DEPENDENT"
+    if max(rels) >= 0.70:
+        return "INDEPENDENT"
+    return "PARTIALLY_DEPENDENT"
+
+
+def source_assessment(sids: List[str], sources: Dict[str, Dict[str, Any]], roots: Dict[str, str]) -> Dict[str, Any]:
+    fams = source_family_ids(sids, roots)
+    state = independence_state(fams, sources, sids)
+    max_rel, avg_rel = source_quality(sids, sources)
+    return {
+        "source_ids": sids,
+        "source_families": fams,
+        "state": state,
+        "max_reliability": round(max_rel, 4),
+        "avg_reliability": round(avg_rel, 4),
+    }
+
+
+# --------------------------------------------------------------------
+# Entity / asset / record ingestion
+# --------------------------------------------------------------------
+
+def ingest_entities(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for idx, e in enumerate(manifest.get("entities", []) or []):
+        eid = normalize_text(e.get("entity_id") or e.get("id") or e.get("name") or f"ENT-{idx}")
+        if not eid:
+            continue
+        etype = norm_enum(e.get("entity_type"), ENTITY_TYPES)
+        is_private = bool(e.get("is_private_person")) or etype == "PERSON"
+        out[eid] = {
+            "entity_id": eid,
+            "name": normalize_text(e.get("name")) or eid,
+            "entity_type": etype,
+            "is_private_person": is_private,
+            "jurisdiction": normalize_text(e.get("jurisdiction")).upper() or None,
+            "source_ids": source_list(e.get("source_ids"), e.get("source_id")),
+            "limitations": [
+                "Entity identity is not asset ownership automatically.",
+                "Company ownership does not establish individual beneficial ownership.",
+            ],
+        }
+    return out
+
+
+def ingest_assets(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    assets: Dict[str, Dict[str, Any]] = {}
+    for idx, a in enumerate(manifest.get("assets", []) or []):
+        aid = normalize_text(a.get("asset_id") or a.get("id") or f"ASSET-{idx}")
+        atype = norm_enum(a.get("asset_type"), ASSET_TYPES)
+        subtype = normalize_text(a.get("asset_subtype")).upper() or None
+        ident = normalize_identifier(atype, a.get("identifier"))
+        jur = normalize_text(a.get("jurisdiction")).upper() or None
+        status = norm_enum(a.get("status"), ASSET_STATUS)
+        criticality = norm_enum(a.get("criticality"), CRITICALITY_STATES)
+
+        identifier_valid: Optional[bool] = None
+        if atype == "VEHICLE" and len(ident) == 17:
+            identifier_valid = vin_valid(ident)
+        elif atype == "VESSEL" and ident.isdigit():
+            identifier_valid = imo_valid(ident)
+
+        assets[aid] = {
+            "asset_id": aid,
+            "asset_type": atype,
+            "asset_subtype": subtype,
+            "name": normalize_text(a.get("name")) or aid,
+            "identifier": normalize_text(a.get("identifier")) or None,
+            "identifier_normalized": ident or None,
+            "identifier_type": normalize_text(a.get("identifier_type")).upper() or None,
+            "identifier_valid": identifier_valid,
+            "jurisdiction": jur,
+            "status": status,
+            "criticality": criticality,
+            "registered_at": parse_time(a.get("registered_at") or a.get("registration_date")),
+            "observed_at": parse_time(a.get("observed_at")),
+            "dedupe_state": "UNKNOWN",
+            "canonical_asset_id": aid,
+            "duplicate_asset_ids": [],
+            "source_ids": source_list(a.get("source_ids"), a.get("source_id")),
+            "confidence": clamp(float(a.get("confidence", 0.65))),
+            "limitations": list(a.get("limitations", []) or []) + [
+                "Identifier resolves asset, not ownership.",
+                "Registered location is not necessarily current physical location.",
+                "Asset status and ownership eras must be time-bound.",
+            ],
+            "relationships": [],
+            "transfers": [],
+            "encumbrances": [],
+            "leases": [],
+            "valuations": [],
+            "locations": [],
+            "exposures": [],
+            "sanctions": [],
+            "regulatory": [],
+        }
+
+    groups: Dict[Tuple[str, str, str], List[str]] = defaultdict(list)
+    for aid, a in assets.items():
+        if a.get("identifier_normalized"):
+            key = (a["asset_type"], a["identifier_normalized"], a.get("jurisdiction") or "")
+            groups[key].append(aid)
+
+    for _key, ids in groups.items():
+        if len(ids) > 1:
+            canon = ids[0]
+            for aid in ids:
+                assets[aid]["dedupe_state"] = "PROBABLE_SAME_ASSET"
+                assets[aid]["canonical_asset_id"] = canon
+                assets[aid]["duplicate_asset_ids"] = [x for x in ids if x != aid]
+
+    return assets
+
+
+def ingest_relationships(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, r in enumerate(manifest.get("relationships", []) or []):
+        rt = norm_enum(r.get("relationship_type"), RELATIONSHIP_TYPES)
+        out.append({
+            "relationship_id": normalize_text(r.get("relationship_id") or r.get("id") or f"REL-{idx}"),
+            "asset_id": normalize_text(r.get("asset_id")),
+            "entity_id": normalize_text(
+                r.get("entity_id") or r.get("owner_id") or r.get("operator_id") or
+                r.get("user_id") or r.get("lessee_id") or r.get("lessor_id")
+            ),
+            "relationship_type": rt,
+            "valid_from": parse_time(r.get("valid_from") or r.get("start_date") or r.get("as_of")),
+            "valid_to": parse_time(r.get("valid_to") or r.get("end_date")),
+            "state": normalize_text(r.get("state")).upper() or None,
+            "control_type": norm_enum(r.get("control_type"), CONTROL_STATES) if rt == "CONTROLLER" else None,
+            "source_ids": source_list(r.get("source_ids"), r.get("source_id")),
+            "confidence": clamp(float(r.get("confidence", 0.60))),
+            "notes": normalize_text(r.get("notes")) or None,
+        })
+    return out
+
+
+def ingest_transfers(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, t in enumerate(manifest.get("transfer_events", []) or manifest.get("transfers", []) or []):
+        out.append({
+            "transfer_id": normalize_text(t.get("transfer_id") or t.get("id") or f"TRF-{idx}"),
+            "asset_id": normalize_text(t.get("asset_id")),
+            "from_entity_id": normalize_text(t.get("from_entity_id") or t.get("seller_id") or t.get("transferor_id")),
+            "to_entity_id": normalize_text(t.get("to_entity_id") or t.get("buyer_id") or t.get("transferee_id")),
+            "event_type": normalize_text(t.get("event_type") or t.get("transfer_type")).upper() or "TRANSFER",
+            "effective_at": parse_time(t.get("effective_at") or t.get("transfer_date")),
+            "registered_at": parse_time(t.get("registered_at") or t.get("registration_date")),
+            "status": norm_enum(t.get("status"), TRANSFER_STATUS),
+            "consideration": parse_float(t.get("consideration") or t.get("price")),
+            "currency": normalize_text(t.get("currency")).upper() or None,
+            "source_ids": source_list(t.get("source_ids"), t.get("source_id")),
+            "confidence": clamp(float(t.get("confidence", 0.60))),
+            "limitations": [
+                "Sale agreement is not completed transfer.",
+                "Registration date may differ from effective date.",
+            ],
+        })
+    return out
+
+
+def ingest_encumbrances(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, e in enumerate(manifest.get("encumbrances", []) or []):
+        out.append({
+            "encumbrance_id": normalize_text(e.get("encumbrance_id") or e.get("id") or f"ENC-{idx}"),
+            "asset_id": normalize_text(e.get("asset_id")),
+            "holder_entity_id": normalize_text(e.get("holder_entity_id") or e.get("creditor_id") or e.get("mortgagee_id")),
+            "encumbrance_type": norm_enum(e.get("encumbrance_type") or e.get("type"), ENCUMBRANCE_TYPES),
+            "amount": parse_float(e.get("amount")),
+            "currency": normalize_text(e.get("currency")).upper() or None,
+            "created_at": parse_time(e.get("created_at") or e.get("registered_at")),
+            "released_at": parse_time(e.get("released_at") or e.get("satisfied_at")),
+            "status": norm_enum(e.get("status"), ENCUMBRANCE_STATUS),
+            "source_ids": source_list(e.get("source_ids"), e.get("source_id")),
+            "confidence": clamp(float(e.get("confidence", 0.60))),
+            "limitations": [
+                "Lien/mortgage/charge holder is not necessarily legal or beneficial owner.",
+            ],
+        })
+    return out
+
+
+def ingest_leases(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, l in enumerate(manifest.get("leases", []) or []):
+        out.append({
+            "lease_id": normalize_text(l.get("lease_id") or l.get("id") or f"LEASE-{idx}"),
+            "asset_id": normalize_text(l.get("asset_id")),
+            "lessor_entity_id": normalize_text(l.get("lessor_entity_id") or l.get("lessor_id")),
+            "lessee_entity_id": normalize_text(l.get("lessee_entity_id") or l.get("lessee_id")),
+            "start_date": parse_time(l.get("start_date") or l.get("valid_from")),
+            "end_date": parse_time(l.get("end_date") or l.get("valid_to")),
+            "status": norm_enum(l.get("status"), LEASE_STATUS),
+            "source_ids": source_list(l.get("source_ids"), l.get("source_id")),
+            "confidence": clamp(float(l.get("confidence", 0.60))),
+            "limitations": [
+                "Lease creates right of use, not legal title automatically.",
+            ],
+        })
+    return out
+
+
+def ingest_valuations(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, v in enumerate(manifest.get("valuation_records", []) or manifest.get("valuations", []) or []):
+        out.append({
+            "valuation_id": normalize_text(v.get("valuation_id") or v.get("id") or f"VAL-{idx}"),
+            "asset_id": normalize_text(v.get("asset_id")),
+            "valuation_type": norm_enum(v.get("valuation_type") or v.get("type"), VALUATION_TYPES),
+            "value": parse_float(v.get("value")),
+            "currency": normalize_text(v.get("currency")).upper() or None,
+            "valuation_date": parse_time(v.get("valuation_date") or v.get("date")),
+            "method": normalize_text(v.get("method")) or None,
+            "source_ids": source_list(v.get("source_ids"), v.get("source_id")),
+            "confidence": clamp(float(v.get("confidence", 0.55))),
+            "limitations": [
+                "Purchase price, book value, market estimate, tax value, insured value are distinct.",
+                "Old valuation is not current value without model/source.",
+            ],
+        })
+    return out
+
+
+def ingest_locations(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, loc in enumerate(manifest.get("location_records", []) or manifest.get("locations", []) or []):
+        out.append({
+            "location_id": normalize_text(loc.get("location_id") or loc.get("id") or f"LOC-{idx}"),
+            "asset_id": normalize_text(loc.get("asset_id")),
+            "precision": norm_enum(loc.get("location_precision") or loc.get("precision"), LOCATION_PRECISION),
+            "value": normalize_text(
+                loc.get("value") or loc.get("address") or loc.get("coordinates") or
+                loc.get("city") or loc.get("region") or loc.get("country")
+            ) or None,
+            "observed_at": parse_time(loc.get("observed_at") or loc.get("as_of")),
+            "source_ids": source_list(loc.get("source_ids"), loc.get("source_id")),
+            "confidence": clamp(float(loc.get("confidence", 0.55))),
+            "limitations": [
+                "Registered location is not current physical location.",
+                "Private residence exact coordinates are minimized by default.",
+            ],
+        })
+    return out
+
+
+def ingest_exposures(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, e in enumerate(manifest.get("exposure_records", []) or manifest.get("exposures", []) or []):
+        out.append({
+            "exposure_id": normalize_text(e.get("exposure_id") or e.get("id") or f"EXP-{idx}"),
+            "asset_id": normalize_text(e.get("asset_id")),
+            "exposure_type": norm_enum(e.get("exposure_type") or e.get("type"), EXPOSURE_TYPES),
+            "state": norm_enum(e.get("state"), EXPOSURE_STATES),
+            "interface": normalize_text(e.get("interface") or e.get("channel")) or None,
+            "observed_at": parse_time(e.get("observed_at")),
+            "source_ids": source_list(e.get("source_ids"), e.get("source_id")),
+            "confidence": clamp(float(e.get("confidence", 0.55))),
+            "limitations": [
+                "Discovered is not exposed.",
+                "Exposed is not vulnerable.",
+                "Vulnerable is not compromised.",
+            ],
+        })
+    return out
+
+
+def ingest_sanctions(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, s in enumerate(manifest.get("sanctions_records", []) or manifest.get("sanctions", []) or []):
+        out.append({
+            "sanction_id": normalize_text(s.get("sanction_id") or s.get("id") or f"SANC-{idx}"),
+            "asset_id": normalize_text(s.get("asset_id")) or None,
+            "entity_id": normalize_text(s.get("entity_id")) or None,
+            "program": normalize_text(s.get("program")) or None,
+            "listing_authority": normalize_text(s.get("listing_authority") or s.get("authority")) or None,
+            "status": norm_enum(s.get("status"), SANCTION_STATUS),
+            "effective_at": parse_time(s.get("effective_at") or s.get("listed_at")),
+            "source_ids": source_list(s.get("source_ids"), s.get("source_id")),
+            "confidence": clamp(float(s.get("confidence", 0.60))),
+            "limitations": [
+                "ASSETINT does not make final sanctions/legal determinations.",
+                "Sanctioned entity relationship is not automatically frozen asset.",
+            ],
+        })
+    return out
+
+
+def ingest_regulatory(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for idx, r in enumerate(manifest.get("regulatory_records", []) or manifest.get("regulatory", []) or []):
+        out.append({
+            "regulatory_id": normalize_text(r.get("regulatory_id") or r.get("id") or f"REG-{idx}"),
+            "asset_id": normalize_text(r.get("asset_id")) or None,
+            "entity_id": normalize_text(r.get("entity_id")) or None,
+            "regulatory_type": normalize_text(r.get("regulatory_type") or r.get("type")).upper() or "UNKNOWN",
+            "status": norm_enum(r.get("status"), REGULATORY_STATUS),
+            "authority": normalize_text(r.get("authority")) or None,
+            "effective_at": parse_time(r.get("effective_at")),
+            "source_ids": source_list(r.get("source_ids"), r.get("source_id")),
+            "confidence": clamp(float(r.get("confidence", 0.60))),
+            "limitations": [
+                "License/permit is not ownership automatically.",
+                "Announced regulation is not effective regulation.",
+            ],
+        })
+    return out
+
+
+def attach_records(
+    assets: Dict[str, Dict[str, Any]],
+    records: List[Dict[str, Any]],
+    field: str,
+    unknown_refs: List[Dict[str, Any]],
+) -> None:
+    id_keys = (
+        "record_id", "relationship_id", "transfer_id", "encumbrance_id",
+        "lease_id", "valuation_id", "location_id", "exposure_id",
+        "sanction_id", "regulatory_id", "id",
+    )
+    for r in records:
+        aid = normalize_text(r.get("asset_id"))
+        if aid in assets:
+            assets[aid].setdefault(field, []).append(r)
+        else:
+            rid = next((r.get(k) for k in id_keys if r.get(k)), None)
+            unknown_refs.append({
+                "asset_id": aid or None,
+                "record_field": field,
+                "record_id": normalize_text(rid) if rid else None,
+            })
+
+
+# --------------------------------------------------------------------
+# Temporal / relationship analysis
+# --------------------------------------------------------------------
+
+def determine_as_of(
+    manifest: Dict[str, Any],
+    assets: Dict[str, Dict[str, Any]],
+    record_lists: Iterable[List[Dict[str, Any]]],
+    sources: Dict[str, Dict[str, Any]],
+) -> Optional[datetime]:
+    as_of = parse_time((manifest.get("time_range") or {}).get("as_of"))
+    candidates: List[datetime] = []
+    if as_of:
+        candidates.append(as_of)
+
+    for a in assets.values():
+        for k in ("registered_at", "observed_at"):
+            v = a.get(k)
+            if isinstance(v, datetime):
+                candidates.append(v)
+
+    date_keys = (
+        "valid_from", "valid_to", "effective_at", "registered_at",
+        "created_at", "released_at", "start_date", "end_date",
+        "valuation_date", "observed_at", "reported_at", "published_at",
+        "retrieved_at",
+    )
+    for lst in record_lists:
+        for r in lst:
+            for k in date_keys:
+                v = r.get(k)
+                if isinstance(v, datetime):
+                    candidates.append(v)
+
+    for s in sources.values():
+        dt = parse_time(s.get("observed_at"))
+        if dt:
+            candidates.append(dt)
+
+    return max(candidates) if candidates else None
+
+
+def build_eras(
+    records: List[Dict[str, Any]],
+    as_of: Optional[datetime],
+    sources: Dict[str, Dict[str, Any]],
+    roots: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    eras = []
+    for r in sorted(records, key=lambda x: x.get("valid_from") or FAR_PAST):
+        vf = r.get("valid_from")
+        vt = r.get("valid_to")
+        current = False
+        historical = False
+        future = False
+        if as_of:
+            if vf and vf > as_of:
+                future = True
+            elif (not vf or vf <= as_of) and (not vt or vt >= as_of):
+                current = True
+            elif vt and vt < as_of:
+                historical = True
+        eras.append({
+            "relationship_id": r.get("relationship_id"),
+            "entity_id": r.get("entity_id"),
+            "relationship_type": r.get("relationship_type"),
+            "valid_from": vf,
+            "valid_to": vt,
+            "state": r.get("state"),
+            "control_type": r.get("control_type"),
+            "source_ids": r.get("source_ids", []),
+            "confidence": r.get("confidence", 0.5),
+            "source_assessment": source_assessment(r.get("source_ids", []), sources, roots),
+            "current": current,
+            "historical": historical,
+            "future": future,
+        })
+    return eras
+
+
+def summarize_eras(eras: List[Dict[str, Any]]) -> Dict[str, Any]:
+    current: List[str] = []
+    historical: List[str] = []
+    future: List[str] = []
+    max_rel = 0.0
+    indep_states: List[str] = []
+
+    for e in eras:
+        eid = e.get("entity_id")
+        if eid:
+            if e.get("current"):
+                add_unique(current, eid)
+            elif e.get("historical"):
+                add_unique(historical, eid)
+            elif e.get("future"):
+                add_unique(future, eid)
+        sa = e.get("source_assessment", {})
+        max_rel = max(max_rel, float(sa.get("max_reliability", 0.0)))
+        indep_states.append(sa.get("state", "UNKNOWN"))
+
+    if "INDEPENDENT" in indep_states:
+        indep = "INDEPENDENT"
+    elif "PARTIALLY_DEPENDENT" in indep_states:
+        indep = "PARTIALLY_DEPENDENT"
+    elif indep_states:
+        indep = "DEPENDENT"
+    else:
+        indep = "UNKNOWN"
+
+    return {
+        "eras": eras,
+        "current_entities": current,
+        "historical_entities": historical,
+        "future_entities": future,
+        "record_count": len(eras),
+        "max_source_reliability": round(max_rel, 4),
+        "source_independence": indep,
+    }
+
+
+def beneficial_priority(states: List[str], max_rel: float) -> str:
+    st = {normalize_text(s).upper() for s in states if s}
+    if "OFFICIALLY_REPORTED" in st:
+        return "OFFICIALLY_REPORTED"
+    if "SUPPORTED" in st:
+        return "SUPPORTED"
+    if "DISPUTED" in st:
+        return "DISPUTED"
+    if "PROBABLE" in st:
+        return "PROBABLE"
+    if "POSSIBLE" in st:
+        return "POSSIBLE"
+    if max_rel >= 0.80:
+        return "SUPPORTED"
+    if max_rel >= 0.60:
+        return "PROBABLE"
+    if st:
+        return "POSSIBLE"
+    return "UNKNOWN"
+
+
+def is_private_sensitive(
+    asset: Dict[str, Any],
+    rel_summaries: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+) -> bool:
+    if asset.get("asset_type") == "REAL_ESTATE" and asset.get("asset_subtype") in PRIVATE_SUBTYPES:
+        return True
+
+    private_entities: Set[str] = set()
+    for rt in ("LEGAL_OWNER", "BENEFICIAL_OWNER", "CONTROLLER", "OPERATOR", "USER", "LESSEE", "POSSESSOR"):
+        for eid in rel_summaries.get(rt, {}).get("current_entities", []):
+            if entities.get(eid, {}).get("is_private_person"):
+                private_entities.add(eid)
+
+    if asset.get("asset_type") in {"REAL_ESTATE", "VEHICLE", "VESSEL", "AIRCRAFT"} and private_entities:
+        return True
+
+    return False
+
+
+def summarize_locations(
+    locations: List[Dict[str, Any]],
+    private_sensitive: bool,
+    asset: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    flags: List[str] = []
+    out = []
+    for loc in sorted(locations, key=lambda x: x.get("observed_at") or FAR_PAST):
+        ll = dict(loc)
+        prec = ll.get("precision")
+        val = ll.get("value")
+
+        if private_sensitive:
+            if prec == "EXACT_COORDINATE":
+                ll["original_precision"] = prec
+                ll["precision"] = "CITY"
+                ll["value"] = "restricted"
+                ll["privacy_adjusted"] = True
+                flags.append(f"Exact private location downgraded for asset {ll.get('asset_id')}.")
+            elif prec == "SITE" and (
+                asset.get("asset_type") == "REAL_ESTATE" or
+                asset.get("asset_type") in {"VEHICLE", "VESSEL", "AIRCRAFT"}
+            ):
+                ll["original_precision"] = prec
+                ll["precision"] = "CITY"
+                ll["value"] = "restricted"
+                ll["privacy_adjusted"] = True
+                flags.append(f"Site-level private location downgraded for asset {ll.get('asset_id')}.")
+
+        if isinstance(val, str) and re.match(r"^\s*[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+", val):
+            if private_sensitive:
+                ll["value"] = "restricted"
+                ll["privacy_adjusted"] = True
+
+        out.append(ll)
+
+    if not out:
+        out.append({
+            "location_id": stable_id("LOC", asset.get("asset_id"), "none"),
+            "asset_id": asset.get("asset_id"),
+            "precision": "UNKNOWN",
+            "value": None,
+            "observed_at": None,
+            "source_ids": [],
+            "confidence": 0.0,
+            "limitations": ["No location record provided."],
+        })
+    return out, flags
+
+
+def summarize_leases(leases: List[Dict[str, Any]], as_of: Optional[datetime]) -> Dict[str, Any]:
+    active = []
+    pending = []
+    terminated = []
+
+    for l in leases:
+        start = l.get("start_date")
+        end = l.get("end_date")
+        status = l.get("status")
+        if status in {"TERMINATED", "EXPIRED", "RELEASED"}:
+            terminated.append(l)
+        elif as_of and start and start > as_of:
+            pending.append(l)
+        elif (not start or start <= as_of) and (not end or end >= as_of) and status not in {"TERMINATED", "EXPIRED", "RELEASED"}:
+            active.append(l)
+        else:
+            terminated.append(l)
+
+    lessees = [l.get("lessee_entity_id") for l in active if l.get("lessee_entity_id")]
+    lessors = [l.get("lessor_entity_id") for l in active if l.get("lessor_entity_id")]
+
+    return {
+        "active_leases": active,
+        "pending_leases": pending,
+        "terminated_leases": terminated,
+        "current_lessees": list(dict.fromkeys(lessees)),
+        "current_lessors": list(dict.fromkeys(lessors)),
+        "state": "ACTIVE" if active else ("PENDING" if pending else ("TERMINATED" if terminated else "UNKNOWN")),
+        "limitations": [
+            "Lease creates right of use, not legal title automatically.",
+            "Sale-leaseback structures can make lessee and legal owner differ or temporarily align.",
+        ],
+    }
+
+
+def summarize_encumbrances(encumbrances: List[Dict[str, Any]], as_of: Optional[datetime]) -> Dict[str, Any]:
+    active = []
+    released = []
+    disputed = []
+    conflicts = []
+
+    for e in encumbrances:
+        status = e.get("status")
+        created = e.get("created_at")
+        released_at = e.get("released_at")
+
+        if status in {"RELEASED", "SATISFIED"} or (released_at and as_of and released_at < as_of):
+            released.append(e)
+        elif status == "DISPUTED":
+            disputed.append(e)
+        elif status == "ACTIVE" and released_at and as_of and released_at < as_of:
+            active.append(e)
+            conflicts.append({
+                "encumbrance_id": e.get("encumbrance_id"),
+                "type": "ENCUMBRANCE_STATUS_RELEASE_DATE_CONFLICT",
+                "detail": "Encumbrance marked active but released date is before as-of date.",
+            })
+        elif (not created or created <= as_of) and (not released_at or released_at >= as_of):
+            active.append(e)
+        else:
+            released.append(e)
+
+    holders = [e.get("holder_entity_id") for e in active if e.get("holder_entity_id")]
+    types = [e.get("encumbrance_type") for e in active if e.get("encumbrance_type")]
+
+    return {
+        "active_encumbrances": active,
+        "released_encumbrances": released,
+        "disputed_encumbrances": disputed,
+        "conflicts": conflicts,
+        "current_holders": list(dict.fromkeys(holders)),
+        "active_types": list(dict.fromkeys(types)),
+        "state": "ENCUMBERED" if active else ("DISPUTED" if disputed else ("RELEASED" if released else "UNKNOWN")),
+        "limitations": [
+            "Lien/mortgage/charge holder is not necessarily legal or beneficial owner.",
+            "Encumbrance does not automatically alter title.",
+        ],
+    }
+
+
+def summarize_transfers(transfers: List[Dict[str, Any]], as_of: Optional[datetime]) -> Dict[str, Any]:
+    completed = []
+    pending = []
+    cancelled = []
+    unknown = []
+
+    for t in transfers:
+        status = t.get("status")
+        eff = t.get("effective_at") or t.get("registered_at")
+        if status == "CANCELLED":
+            cancelled.append(t)
+        elif status == "COMPLETED" and eff and as_of and eff <= as_of:
+            completed.append(t)
+        elif status in {"ANNOUNCED", "AGREED", "PENDING"}:
+            pending.append(t)
+        else:
+            unknown.append(t)
+
+    completed_to = [t.get("to_entity_id") for t in completed if t.get("to_entity_id")]
+    latest_completed_at = max((t.get("effective_at") or t.get("registered_at") for t in completed if (t.get("effective_at") or t.get("registered_at"))), default=None)
+
+    return {
+        "completed_transfers": completed,
+        "pending_transfers": pending,
+        "cancelled_transfers": cancelled,
+        "unknown_transfers": unknown,
+        "completed_to_entities": list(dict.fromkeys(completed_to)),
+        "latest_completed_at": latest_completed_at,
+        "state": "COMPLETED" if completed else ("PENDING" if pending else ("CANCELLED" if cancelled else "UNKNOWN")),
+        "limitations": [
+            "Completed transfer should be reconciled with current registration/title record.",
+            "Announced/agreed/pending transfer is not completed ownership change.",
+        ],
+    }
+
+
+def summarize_valuations(valuations: List[Dict[str, Any]], as_of: Optional[datetime]) -> Dict[str, Any]:
+    by_type: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for v in valuations:
+        by_type[v.get("valuation_type", "UNKNOWN")].append(v)
+
+    summary = []
+    for typ, vals in by_type.items():
+        vals.sort(key=lambda x: x.get("valuation_date") or FAR_PAST)
+        latest = vals[-1]
+        age_days = days_between(latest.get("valuation_date"), as_of)
+        summary.append({
+            "valuation_type": typ,
+            "latest_value": latest.get("value"),
+            "currency": latest.get("currency"),
+            "valuation_date": latest.get("valuation_date"),
+            "method": latest.get("method"),
+            "record_count": len(vals),
+            "age_days": age_days,
+            "stale": age_days is not None and age_days > 1095,
+            "source_ids": latest.get("source_ids", []),
+            "confidence": latest.get("confidence", 0.5),
+        })
+
+    return {
+        "by_type": summary,
+        "state": "AVAILABLE" if summary else "UNKNOWN",
+        "limitations": [
+            "Valuation types are not interchangeable.",
+            "No current value is projected from old purchase price without explicit valuation source/model.",
+        ],
+    }
+
+
+def summarize_exposures(exposures: List[Dict[str, Any]], as_of: Optional[datetime]) -> Dict[str, Any]:
+    by_type: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for e in exposures:
+        by_type[e.get("exposure_type", "UNKNOWN")].append(e)
+
+    summary = []
+    for typ, recs in by_type.items():
+        recs.sort(key=lambda x: x.get("observed_at") or FAR_PAST)
+        latest = recs[-1]
+        age_days = days_between(latest.get("observed_at"), as_of)
+        summary.append({
+            "exposure_type": typ,
+            "state": latest.get("state", "UNKNOWN"),
+            "interface": latest.get("interface"),
+            "observed_at": latest.get("observed_at"),
+            "age_days": age_days,
+            "stale": age_days is not None and age_days > 365,
+            "source_assessment": {
+                "max_reliability": latest.get("confidence", 0.5),
+                "source_ids": latest.get("source_ids", []),
+            },
+        })
+
+    if not summary:
+        summary.append({
+            "exposure_type": "UNKNOWN",
+            "state": "UNKNOWN",
+            "interface": None,
+            "observed_at": None,
+            "age_days": None,
+            "stale": False,
+            "source_assessment": {"max_reliability": 0.0, "source_ids": []},
+        })
+
+    return {
+        "by_type": summary,
+        "state": "ASSESSED" if exposures else "UNKNOWN",
+        "limitations": [
+            "Discoverability is not exposure.",
+            "Exposure is not vulnerability.",
+            "Vulnerability is not compromise.",
+        ],
+    }
+
+
+def summarize_sanctions(
+    sanctions: List[Dict[str, Any]],
+    rel_summaries: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    linked_entities: Set[str] = set()
+    for rt in ("LEGAL_OWNER", "BENEFICIAL_OWNER", "CONTROLLER", "OPERATOR", "CUSTODIAN", "NOMINEE", "TRUSTEE"):
+        linked_entities.update(rel_summaries.get(rt, {}).get("current_entities", []))
+
+    out = []
+    for s in sanctions:
+        target_type = "ASSET" if s.get("asset_id") else "ENTITY"
+        relevance = "DIRECT_ASSET_RECORD"
+        if target_type == "ENTITY":
+            if s.get("entity_id") in linked_entities:
+                relevance = "LINKED_CURRENT_ENTITY"
+            else:
+                relevance = "ENTITY_RECORD_NOT_CURRENTLY_LINKED"
+        out.append({
+            **s,
+            "target_type": target_type,
+            "relevance": relevance,
+            "legal_determination": "NOT_MADE",
+        })
+
+    return {
+        "records": out,
+        "state": "PRESENT" if out else "NONE_PROVIDED",
+        "limitations": [
+            "ASSETINT does not make final sanctions determinations.",
+            "Sanctioned entity relationship is not automatically frozen asset.",
+        ],
+    }
+
+
+def summarize_regulatory(regulatory: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "records": regulatory,
+        "state": "PRESENT" if regulatory else "NONE_PROVIDED",
+        "limitations": [
+            "License/permit is not ownership automatically.",
+            "Announced regulation is not effective regulation.",
+        ],
+    }
+
+
+def assess_asset(
+    asset: Dict[str, Any],
+    entities: Dict[str, Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+    roots: Dict[str, str],
+    as_of: Optional[datetime],
+) -> Dict[str, Any]:
+    rels = asset.get("relationships", [])
+    by_type: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in rels:
+        by_type[r.get("relationship_type", "UNKNOWN")].append(r)
+
+    key_types = [
+        "LEGAL_OWNER", "BENEFICIAL_OWNER", "CONTROLLER", "POSSESSOR",
+        "CUSTODIAN", "OPERATOR", "USER", "LESSEE", "LESSOR",
+        "REGISTERED_TO", "ALLOCATED_TO", "HOSTED_BY",
+        "CONTROLLED_BY_CANDIDATE", "NOMINEE", "TRUSTEE",
+    ]
+    rel_summaries = {rt: summarize_eras(build_eras(by_type.get(rt, []), as_of, sources, roots)) for rt in key_types}
+
+    legal = rel_summaries["LEGAL_OWNER"]
+    if legal["current_entities"]:
+        if len(legal["current_entities"]) > 1:
+            legal_state = "CONFLICTING_CURRENT_LEGAL_OWNERS"
+        elif legal["max_source_reliability"] >= 0.80:
+            legal_state = "LEGAL_OWNER_SUPPORTED"
+        else:
+            legal_state = "LEGAL_OWNER_CANDIDATE"
+    elif legal["historical_entities"]:
+        legal_state = "HISTORICAL_OWNER_ONLY"
+    else:
+        legal_state = "UNKNOWN"
+
+    ben = rel_summaries["BENEFICIAL_OWNER"]
+    ben_states = [e.get("state") for e in ben["eras"] if e.get("current")]
+    beneficial_state = beneficial_priority(ben_states, ben["max_source_reliability"]) if ben["current_entities"] else "UNKNOWN"
+
+    ctrl = rel_summaries["CONTROLLER"]
+    if ctrl["current_entities"]:
+        ctypes = [e.get("control_type") for e in ctrl["eras"] if e.get("current") and e.get("control_type") in CONTROL_STATES]
+        control_state = ctypes[0] if ctypes else "UNKNOWN"
+    else:
+        control_state = "UNKNOWN"
+
+    operator = rel_summaries["OPERATOR"]
+    leases = summarize_leases(asset.get("leases", []), as_of)
+    if not operator["current_entities"] and leases["current_lessees"]:
+        operator_state = "LESSEE_OPERATOR_CANDIDATE"
+        operator_current = leases["current_lessees"]
+    else:
+        operator_state = "SUPPORTED" if operator["current_entities"] else "UNKNOWN"
+        operator_current = operator["current_entities"]
+
+    encumbrances = summarize_encumbrances(asset.get("encumbrances", []), as_of)
+    transfers = summarize_transfers(asset.get("transfers", []), as_of)
+    valuations = summarize_valuations(asset.get("valuations", []), as_of)
+    private_sensitive = is_private_sensitive(asset, rel_summaries, entities)
+    locations, privacy_flags = summarize_locations(asset.get("locations", []), private_sensitive, asset)
+    exposures = summarize_exposures(asset.get("exposures", []), as_of)
+    sanctions = summarize_sanctions(asset.get("sanctions", []), rel_summaries, entities)
+    regulatory = summarize_regulatory(asset.get("regulatory", []))
+
+    overall_confidence = clamp(
+        0.35
+        + (0.25 if legal_state in {"LEGAL_OWNER_SUPPORTED", "LEGAL_OWNER_CANDIDATE"} else 0.0)
+        + (0.15 if legal["max_source_reliability"] >= 0.80 else 0.0)
+        + (0.10 if asset.get("identifier_normalized") else 0.0)
+        + (0.05 if asset.get("identifier_valid") is True else 0.0)
+    )
+
+    return {
+        "asset_id": asset.get("asset_id"),
+        "as_of": as_of,
+        "legal_owner_state": legal_state,
+        "beneficial_owner_state": beneficial_state,
+        "control_state": control_state,
+        "operator_state": operator_state,
+        "operator_current_entities": operator_current,
+        "privacy_sensitive": private_sensitive,
+        "privacy_flags": privacy_flags,
+        "overall_confidence": round(overall_confidence, 4),
+        "relationships": rel_summaries,
+        "leases": leases,
+        "encumbrances": encumbrances,
+        "transfers": transfers,
+        "valuations": valuations,
+        "locations": locations,
+        "exposures": exposures,
+        "sanctions": sanctions,
+        "regulatory": regulatory,
+        "limitations": [
+            "Legal owner, beneficial owner, controller, possessor, custodian, operator, user, and lessee are separate relationships.",
+            "Current status is evaluated only as of the provided/assembled as-of date.",
+            "No ownership, location, valuation, encumbrance, or sanctions conclusion is fabricated.",
+        ],
+    }
+
+
+# --------------------------------------------------------------------
+# Contradictions / hypotheses / gaps / actions / handoffs
+# --------------------------------------------------------------------
+
+def detect_contradictions(
+    assets: Dict[str, Dict[str, Any]],
+    assessments: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+    roots: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    contr: List[Dict[str, Any]] = []
+
+    for aid, ass in assessments.items():
+        legal = ass["relationships"]["LEGAL_OWNER"]
+        if len(legal.get("current_entities", [])) > 1:
+            contr.append({
+                "contradiction_id": stable_id("CTR", "legal_owner", aid),
+                "type": "MULTIPLE_CURRENT_LEGAL_OWNERS",
+                "severity": "MATERIAL",
+                "asset_id": aid,
+                "detail": f"Multiple current legal owner entities recorded: {legal['current_entities']}.",
+                "possible_causes": [
+                    "registry lag",
+                    "partial transfer",
+                    "co-ownership",
+                    "duplicate asset record",
+                    "data error",
+                ],
+            })
+
+        completed_to = ass["transfers"].get("completed_to_entities", [])
+        legal_current = legal.get("current_entities", [])
+        if completed_to and legal_current and not (set(completed_to) & set(legal_current)):
+            contr.append({
+                "contradiction_id": stable_id("CTR", "transfer_owner", aid),
+                "type": "COMPLETED_TRANSFER_NOT_REFLECTED_IN_CURRENT_LEGAL_OWNER",
+                "severity": "MATERIAL",
+                "asset_id": aid,
+                "detail": f"Completed transfer to {completed_to} does not match current legal owner {legal_current}.",
+                "possible_causes": ["registration lag", "failed closing", "record error", "later re-transfer"],
+            })
+
+        for c in ass["encumbrances"].get("conflicts", []):
+            contr.append({
+                "contradiction_id": stable_id("CTR", "encumbrance", aid, c.get("encumbrance_id")),
+                "type": c.get("type", "ENCUMBRANCE_CONFLICT"),
+                "severity": "MATERIAL",
+                "asset_id": aid,
+                "detail": c.get("detail"),
+                "possible_causes": ["status not updated", "release date error", "partial release"],
+            })
+
+        for exp in ass["exposures"].get("by_type", []):
+            if exp.get("state") == "EXPOSED" and float(exp.get("source_assessment", {}).get("max_reliability", 0.0)) < 0.50:
+                contr.append({
+                    "contradiction_id": stable_id("CTR", "exposure_support", aid, exp.get("exposure_type")),
+                    "type": "WEAKLY_SUPPORTED_EXPOSURE_CLAIM",
+                    "severity": "MEDIUM",
+                    "asset_id": aid,
+                    "detail": f"Exposure type {exp.get('exposure_type')} marked exposed but source support is weak.",
+                    "possible_causes": ["discoverability confused with exposure", "stale observation", "low-quality source"],
+                })
+
+        for s in ass["sanctions"].get("records", []):
+            if s.get("status") in {"SEIZED", "FORFEITED", "RESTRICTED"} and assets.get(aid, {}).get("status") == "ACTIVE":
+                contr.append({
+                    "contradiction_id": stable_id("CTR", "sanction_status", aid, s.get("sanction_id")),
+                    "type": "SANCTION_STATUS_VS_ASSET_STATUS_CONFLICT",
+                    "severity": "MATERIAL",
+                    "asset_id": aid,
+                    "detail": f"Sanction record status {s.get('status')} conflicts with asset status ACTIVE.",
+                    "possible_causes": ["released asset", "record lag", "different jurisdiction", "data error"],
+                })
+
+    seen_dupes: Set[str] = set()
+    for aid, a in assets.items():
+        canon = a.get("canonical_asset_id") or aid
+        if canon in seen_dupes:
+            continue
+        ids = [canon] + a.get("duplicate_asset_ids", [])
+        seen_dupes.update(ids)
+        if len(ids) <= 1:
+            continue
+        owners: Set[str] = set()
+        for idd in ids:
+            owners.update(assessments.get(idd, {}).get("relationships", {}).get("LEGAL_OWNER", {}).get("current_entities", []))
+        if len(owners) > 1:
+            contr.append({
+                "contradiction_id": stable_id("CTR", "duplicate_owner", canon),
+                "type": "DUPLICATE_ASSET_OWNER_CONFLICT",
+                "severity": "MATERIAL",
+                "asset_ids": ids,
+                "detail": f"Probable duplicate asset records have different current legal owners: {sorted(owners)}.",
+                "possible_causes": ["incorrect deduplication", "successor asset", "registration split", "data error"],
+            })
+
+    return unique_preserve(contr)
+
+
+def build_hypotheses(
+    assets: Dict[str, Dict[str, Any]],
+    assessments: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    hyp: List[Dict[str, Any]] = []
+
+    def add(asset_id: str, category: str, statement: str, support: List[str], opposition: List[str], unknowns: List[str], falsify: List[str]) -> None:
+        hyp.append({
+            "hypothesis_id": stable_id("HYP", asset_id, category, statement),
+            "asset_id": asset_id,
+            "category": category,
+            "statement": statement,
+            "support": support,
+            "opposition": opposition,
+            "unknowns": unknowns,
+            "falsification_conditions": falsify,
+            "status": "CANDIDATE",
+        })
+
+    for aid, ass in assessments.items():
+        a = assets.get(aid, {})
+        legal_state = ass.get("legal_owner_state")
+        legal_entities = ass["relationships"]["LEGAL_OWNER"].get("current_entities", [])
+        legal_types = [entities.get(e, {}).get("entity_type") for e in legal_entities]
+
+        add(aid, "LEGAL_OWNERSHIP",
+            f"Current legal owner is {legal_state}.",
+            [f"legal_entities={legal_entities}", f"source_independence={ass['relationships']['LEGAL_OWNER'].get('source_independence')}"],
+            ["Registry lag or duplicate record possible."],
+            ["Whether registration reflects latest effective transfer"],
+            ["Newer authoritative title/registry record identifies different current owner."])
+
+        if any(t in {"COMPANY", "TRUST", "FUND", "SPV"} for t in legal_types):
+            add(aid, "BENEFICIAL_OWNERSHIP",
+                "Legal owner is a corporate/trust/fund/SPV vehicle; beneficial ownership remains separate.",
+                [f"legal_owner_types={legal_types}", f"beneficial_state={ass.get('beneficial_owner_state')}"],
+                ["Do not infer beneficial owner from use or registration alone."],
+                ["Ownership chain", "trust/fund records", "control relationships"],
+                ["Authoritative ownership records resolve ultimate beneficial owner or confirm undisclosed structure."])
+
+        add(aid, "OPERATOR_SEPARATION",
+            "Operator/lessee may differ from legal owner.",
+            [f"operator_state={ass.get('operator_state')}", f"lease_state={ass['leases'].get('state')}"],
+            ["Owner-operator alignment is possible."],
+            ["Operational contracts", "fleet management", "charter arrangements"],
+            ["Authoritative operational record confirms owner is also operator and no lease/management layer exists."])
+
+        add(aid, "ENCUMBRANCE_FINANCING",
+            "Asset may be financed/encumbered without altering legal title.",
+            [f"encumbrance_state={ass['encumbrances'].get('state')}", f"active_types={ass['encumbrances'].get('active_types')}"],
+            ["Encumbrance records may be stale or asset-specific linkage uncertain."],
+            ["Release status", "security interest scope", "covenant context"],
+            ["Authorized lien/charge registry confirms no active encumbrance or specific release."])
+
+        add(aid, "VALUATION_SEMANTICS",
+            "Reported values are type/date-specific and not interchangeable.",
+            [f"valuation_state={ass['valuations'].get('state')}", f"types={[v.get('valuation_type') for v in ass['valuations'].get('by_type', [])]}"],
+            ["Current market value may be unknown."],
+            ["valuation method", "currency", "as-of date"],
+            ["Independent current appraisal or transaction evidence supersedes older valuation."])
+
+        add(aid, "EXPOSURE_VS_DISCOVERABILITY",
+            "Asset discoverability does not establish external exposure.",
+            [f"exposure_state={ass['exposures'].get('state')}"],
+            ["Public record existence is not internet/network/physical exposure."],
+            ["current configuration", "access controls", "service boundaries"],
+            ["Authorized exposure inventory confirms exposed/not-exposed state with interface evidence."])
+
+        if ass.get("privacy_sensitive"):
+            add(aid, "PRIVACY_MINIMIZATION",
+                "Location precision was reduced because asset/entity context is private-person sensitive.",
+                [f"privacy_flags={ass.get('privacy_flags')}"],
+                ["Objective may require authorized finer granularity."],
+                ["lawful purpose", "authorization scope"],
+                ["Explicit lawful authorization and necessity support higher precision."])
+
+        if a.get("dedupe_state") == "PROBABLE_SAME_ASSET":
+            add(aid, "ASSET_DEDUPLICATION",
+                "Asset may be duplicate/probable same as another record.",
+                [f"duplicate_asset_ids={a.get('duplicate_asset_ids')}", f"canonical={a.get('canonical_asset_id')}"],
+                ["Similar identifiers may refer to successor/component/distinct assets."],
+                ["manufacturer serial history", "registration history"],
+                ["Authoritative registry confirms distinct assets or merges records."])
+
+    return hyp[:2000]
+
+
+def build_gaps(
+    assets: Dict[str, Dict[str, Any]],
+    assessments: Dict[str, Dict[str, Any]],
+    unknown_refs: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+    roots: Dict[str, str],
+    entities: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    gaps: List[Dict[str, Any]] = []
+
+    if not assets:
+        gaps.append({
+            "gap_id": stable_id("GAP", "no_assets"),
+            "type": "ASSET_UNRESOLVED",
+            "importance": "HIGH",
+            "recommended_source": "Authorized asset register, title registry, transport registry, CMDB, cloud inventory.",
+            "specialist": "ASSETINT",
+            "expected_information_value": "Resolve asset identity before ownership analysis.",
+        })
+
+    for ur in unknown_refs:
+        gaps.append({
+            "gap_id": stable_id("GAP", "unknown_ref", ur.get("asset_id"), ur.get("record_field"), ur.get("record_id")),
+            "type": "ASSET_REFERENCE_UNRESOLVED",
+            "importance": "HIGH",
+            "asset_id": ur.get("asset_id"),
+            "record_field": ur.get("record_field"),
+            "recommended_source": "Correct asset_id or add missing asset record.",
+            "specialist": "ASSETINT",
+            "expected_information_value": "Prevent orphan ownership/lease/encumbrance records.",
+        })
+
+    for aid, ass in assessments.items():
+        a = assets.get(aid, {})
+        if not a.get("identifier_normalized"):
+            gaps.append({
+                "gap_id": stable_id("GAP", "identifier", aid),
+                "type": "ASSET_IDENTIFIER_AMBIGUOUS",
+                "importance": "HIGH",
+                "asset_id": aid,
+                "recommended_source": "Official registration/title identifier, serial, VIN, IMO, domain, resource ID.",
+                "specialist": "ASSETINT / TECHINT",
+                "expected_information_value": "Resolve exact asset and avoid duplicate merge.",
+            })
+        if a.get("identifier_valid") is False:
+            gaps.append({
+                "gap_id": stable_id("GAP", "identifier_invalid", aid),
+                "type": "ASSET_IDENTIFIER_CHECKSUM_INVALID",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Re-check VIN/IMO/registration transcription.",
+                "specialist": "ASSETINT",
+                "expected_information_value": "Prevent wrong asset resolution.",
+            })
+        if ass.get("legal_owner_state") in {"UNKNOWN", "HISTORICAL_OWNER_ONLY", "CONFLICTING_CURRENT_LEGAL_OWNERS"}:
+            gaps.append({
+                "gap_id": stable_id("GAP", "legal_owner", aid),
+                "type": "LEGAL_OWNER_UNRESOLVED",
+                "importance": "HIGH",
+                "asset_id": aid,
+                "recommended_source": "Current title/registration record, corporate filing, court record.",
+                "specialist": "ASSETINT / CORPINT",
+                "expected_information_value": "Establish current legal owner without conflating beneficial ownership.",
+            })
+        if ass.get("beneficial_owner_state") == "UNKNOWN":
+            legal_types = [entities.get(e, {}).get("entity_type") for e in ass["relationships"]["LEGAL_OWNER"].get("current_entities", [])]
+            imp = "HIGH" if any(t in {"COMPANY", "TRUST", "FUND", "SPV"} for t in legal_types) else "MEDIUM"
+            gaps.append({
+                "gap_id": stable_id("GAP", "beneficial_owner", aid),
+                "type": "BENEFICIAL_OWNER_UNRESOLVED",
+                "importance": imp,
+                "asset_id": aid,
+                "recommended_source": "Authorized ownership records, corporate registry, trust/fund records where lawful.",
+                "specialist": "OWNERSHIPINT / CORPINT",
+                "expected_information_value": "Separate legal title from ultimate economic interest.",
+            })
+        if ass.get("control_state") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "control", aid),
+                "type": "CONTROL_UNRESOLVED",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Contract, governance record, management agreement, operational authority evidence.",
+                "specialist": "ASSETINT / ORGINT",
+                "expected_information_value": "Distinguish ownership from control.",
+            })
+        if ass.get("operator_state") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "operator", aid),
+                "type": "OPERATOR_UNRESOLVED",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Operating certificate, lease, management contract, authorized operational record.",
+                "specialist": "ASSETINT / TRANSPORTINT",
+                "expected_information_value": "Avoid conflating owner with operator.",
+            })
+        if ass["leases"].get("state") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "lease", aid),
+                "type": "LEASE_STATUS_UNCLEAR",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Authorized lease/contract record.",
+                "specialist": "ASSETINT / LEGALINT",
+                "expected_information_value": "Clarify right-of-use vs title.",
+            })
+        if ass["encumbrances"].get("state") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "encumbrance", aid),
+                "type": "ENCUMBRANCE_UNRESOLVED",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Lien/charge/mortgage registry, secured-party filing, authorized financing record.",
+                "specialist": "ASSETINT / FININT",
+                "expected_information_value": "Identify secured interests without treating holder as owner.",
+            })
+        if not a.get("locations") or all(loc.get("precision") == "UNKNOWN" for loc in ass["locations"]):
+            gaps.append({
+                "gap_id": stable_id("GAP", "location", aid),
+                "type": "LOCATION_UNRESOLVED",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Authorized inventory, registration jurisdiction, public facility record, lawful location source.",
+                "specialist": "ASSETINT / GEOINT",
+                "expected_information_value": "Provide minimum necessary location context.",
+            })
+        if ass.get("privacy_flags"):
+            gaps.append({
+                "gap_id": stable_id("GAP", "privacy_location", aid),
+                "type": "LOCATION_PRECISION_RESTRICTED",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Explicit lawful authorization and necessity for higher precision.",
+                "specialist": "ASSETINT / PRIVACY_REVIEW",
+                "expected_information_value": "Prevent unnecessary private-location exposure.",
+            })
+        if ass["valuations"].get("state") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "valuation", aid),
+                "type": "VALUATION_UNRESOLVED",
+                "importance": "LOW",
+                "asset_id": aid,
+                "recommended_source": "Authorized appraisal, filing, tax record, insurance record, transaction record.",
+                "specialist": "ASSETINT / FININT",
+                "expected_information_value": "Preserve valuation type/date instead of inventing current value.",
+            })
+        for v in ass["valuations"].get("by_type", []):
+            if v.get("stale"):
+                gaps.append({
+                    "gap_id": stable_id("GAP", "valuation_stale", aid, v.get("valuation_type")),
+                    "type": "VALUATION_STALE",
+                    "importance": "MEDIUM",
+                    "asset_id": aid,
+                    "valuation_type": v.get("valuation_type"),
+                    "recommended_source": "Current appraisal/transaction/tax/insurance record.",
+                    "specialist": "ASSETINT / FININT",
+                    "expected_information_value": "Avoid projecting old value as current.",
+                })
+        if ass["exposures"].get("state") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "exposure", aid),
+                "type": "EXPOSURE_UNRESOLVED",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Authorized exposure inventory, public service metadata, physical/site record.",
+                "specialist": "EXPOSUREINT / INFRAINT / ASSETINT",
+                "expected_information_value": "Separate discoverability from exposure and vulnerability.",
+            })
+        if a.get("criticality") == "UNKNOWN":
+            gaps.append({
+                "gap_id": stable_id("GAP", "criticality", aid),
+                "type": "CRITICALITY_UNKNOWN",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Business function dependency, authorized CMDB, service map.",
+                "specialist": "ASSETINT / ORGINT",
+                "expected_information_value": "Assess operational criticality without using price as proxy.",
+            })
+        if ass["transfers"].get("state") == "PENDING":
+            gaps.append({
+                "gap_id": stable_id("GAP", "transfer_pending", aid),
+                "type": "TRANSFER_INCOMPLETE",
+                "importance": "MEDIUM",
+                "asset_id": aid,
+                "recommended_source": "Closing/registration record, court/regulatory filing, authorized transfer document.",
+                "specialist": "ASSETINT / LEGALINT",
+                "expected_information_value": "Distinguish agreed/pending transfer from completed title change.",
+            })
+        legal_sa = ass["relationships"]["LEGAL_OWNER"]
+        if legal_sa.get("current_entities") and legal_sa.get("source_independence") != "INDEPENDENT":
+            gaps.append({
+                "gap_id": stable_id("GAP", "source_independence", aid),
+                "type": "SOURCE_INDEPENDENCE_UNRESOLVED",
+                "importance": "HIGH",
+                "asset_id": aid,
+                "recommended_source": "Original registry/filing pedigree; avoid counting copies of same record.",
+                "specialist": "ASSETINT / DATAINT",
+                "expected_information_value": "Prevent dependent sources being treated as corroboration.",
+            })
+        if ass["sanctions"].get("state") == "PRESENT":
+            gaps.append({
+                "gap_id": stable_id("GAP", "sanctions_review", aid),
+                "type": "SANCTIONS_LEGAL_REVIEW_REQUIRED",
+                "importance": "HIGH",
+                "asset_id": aid,
+                "recommended_source": "Official sanctions list, license/exemption record, legal counsel.",
+                "specialist": "SANCTIONSINT / LEGALINT",
+                "expected_information_value": "Avoid automatic freeze/seizure conclusions.",
+            })
+
+    for c in contradictions:
+        gaps.append({
+            "gap_id": stable_id("GAP", "contradiction", c["contradiction_id"]),
+            "type": "ASSET_CONTRADICTION_UNRESOLVED",
+            "importance": "HIGH" if c.get("severity") == "MATERIAL" else "MEDIUM",
+            "contradiction_id": c["contradiction_id"],
+            "asset_id": c.get("asset_id"),
+            "recommended_source": "Authoritative registry/filing, transfer registration, encumbrance release, exposure inventory.",
+            "specialist": "ASSETINT / HUMAN_REVIEW",
+            "expected_information_value": "Resolve conflict before consequential ownership/action.",
+        })
+
+    return gaps[:1000]
+
+
+def build_next_actions(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    actions = []
+    prio = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    for g in gaps:
+        t = g.get("type")
+        if t == "ASSET_UNRESOLVED":
+            action = "Resolve asset identity from authorized register/registry; do not invent asset."
+        elif t == "ASSET_REFERENCE_UNRESOLVED":
+            action = "Correct asset_id linkage or add missing authorized asset record."
+        elif t == "ASSET_IDENTIFIER_AMBIGUOUS":
+            action = "Retrieve official identifier (title/registration/VIN/IMO/domain/resource ID)."
+        elif t == "ASSET_IDENTIFIER_CHECKSUM_INVALID":
+            action = "Re-check identifier transcription; do not merge assets on invalid identifier."
+        elif t == "LEGAL_OWNER_UNRESOLVED":
+            action = "Retrieve current title/registration record and reconcile transfer/registration dates."
+        elif t == "BENEFICIAL_OWNER_UNRESOLVED":
+            action = "Hand corporate/trust/fund/SPV ownership chain to OWNERSHIPINT/CORPINT."
+        elif t == "CONTROL_UNRESOLVED":
+            action = "Review contract/governance/management evidence; do not equate title with control."
+        elif t == "OPERATOR_UNRESOLVED":
+            action = "Check lease/operating certificate/management contract; do not infer operator from owner."
+        elif t == "LEASE_STATUS_UNCLEAR":
+            action = "Retrieve authorized lease/contract record."
+        elif t == "ENCUMBRANCE_UNRESOLVED":
+            action = "Check lien/charge/mortgage registry; do not treat secured party as owner."
+        elif t == "LOCATION_UNRESOLVED":
+            action = "Use minimum necessary location granularity from lawful source."
+        elif t == "LOCATION_PRECISION_RESTRICTED":
+            action = "Maintain privacy-minimized location unless explicit lawful authorization exists."
+        elif t in {"VALUATION_UNRESOLVED", "VALUATION_STALE"}:
+            action = "Retrieve type/date-specific valuation source; do not project current value."
+        elif t == "EXPOSURE_UNRESOLVED":
+            action = "Use authorized exposure inventory; do not scan or probe without authorization."
+        elif t == "CRITICALITY_UNKNOWN":
+            action = "Map business function dependency from authorized CMDB/service map."
+        elif t == "TRANSFER_INCOMPLETE":
+            action = "Verify closing/registration status before treating transfer as completed."
+        elif t == "SOURCE_INDEPENDENCE_UNRESOLVED":
+            action = "Trace source pedigree to original registry/filing; do not count copies as independent."
+        elif t == "SANCTIONS_LEGAL_REVIEW_REQUIRED":
+            action = "Escalate to SANCTIONSINT/LEGALINT; do not declare freeze/seizure automatically."
+        elif t == "ASSET_CONTRADICTION_UNRESOLVED":
+            action = "Resolve using authoritative primary records and human review before consequential action."
+        else:
+            action = "Gather additional authorized asset evidence."
+
+        actions.append({
+            "action": action,
+            "gap_id": g.get("gap_id"),
+            "priority": g.get("importance", "MEDIUM"),
+            "expected_information_value": g.get("expected_information_value"),
+            "prohibited_alternatives": [
+                "Do not stalk, track, locate, target, burgle, steal, repossess, or sabotage.",
+                "Do not scan/access/login/bypass/modify assets without authorization.",
+                "Do not use stolen/exposed credentials or bypass cloud IAM.",
+                "Do not assist asset concealment, sanctions/tax/creditor/seizure evasion.",
+                "Do not invent ownership, location, valuation, encumbrance, or status.",
+            ],
+        })
+    actions.sort(key=lambda x: prio.get(x.get("priority", "LOW"), 9))
+    return actions[:300]
+
+
+def build_handoffs(
+    assets: Dict[str, Dict[str, Any]],
+    assessments: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+    gaps: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    hands = []
+    seen = set()
+
+    def add(spec: str, reason: str, payload: Dict[str, Any]) -> None:
+        key = (spec, json.dumps(json_safe(payload), sort_keys=True, ensure_ascii=False))
+        if key not in seen:
+            seen.add(key)
+            hands.append({"specialist": spec, "reason": reason, "payload": payload})
+
+    if any(entities.get(e, {}).get("entity_type") in {"COMPANY", "TRUST", "FUND", "SPV"} for ass in assessments.values() for e in ass["relationships"]["LEGAL_OWNER"].get("current_entities", [])):
+        add("CORPINT / OWNERSHIPINT", "Corporate/trust/fund/SPV ownership layers require entity and beneficial-ownership specialists.", {
+            "asset_ids": list(assets.keys())[:100],
+        })
+
+    if any(g.get("type") == "BENEFICIAL_OWNER_UNRESOLVED" for g in gaps):
+        add("OWNERSHIPINT", "Deep beneficial ownership resolution required.", {
+            "gap_ids": [g["gap_id"] for g in gaps if g.get("type") == "BENEFICIAL_OWNER_UNRESOLVED"][:100],
+        })
+
+    if any(ass["encumbrances"].get("state") != "UNKNOWN" or ass["valuations"].get("state") != "UNKNOWN" for ass in assessments.values()):
+        add("FININT", "Financing, secured interests, and valuation semantics may require financial specialist.", {
+            "asset_ids": [aid for aid, ass in assessments.items() if ass["encumbrances"].get("state") != "UNKNOWN" or ass["valuations"].get("state") != "UNKNOWN"][:100],
+        })
+
+    if any(ass["sanctions"].get("state") == "PRESENT" for ass in assessments.values()):
+        add("SANCTIONSINT / LEGALINT", "Sanctions applicability and legal determinations require specialist review.", {
+            "asset_ids": [aid for aid, ass in assessments.items() if ass["sanctions"].get("state") == "PRESENT"][:100],
+        })
+
+    if any(a.get("asset_type") in {"DOMAIN", "IP_ADDRESS", "PREFIX", "CLOUD_RESOURCE", "IT_ASSET", "SERVER", "NETWORK_ASSET"} for a in assets.values()):
+        add("INFRAINT / DOMAININT / IPINT / CLOUDINT", "Digital asset infrastructure identity requires technical specialists.", {
+            "asset_ids": [aid for aid, a in assets.items() if a.get("asset_type") in {"DOMAIN", "IP_ADDRESS", "PREFIX", "CLOUD_RESOURCE", "IT_ASSET", "SERVER", "NETWORK_ASSET"}][:100],
+        })
+
+    if any(a.get("asset_type") in {"VEHICLE", "VESSEL", "AIRCRAFT"} for a in assets.values()):
+        add("TRANSPORTINT / GEOINT", "Transport asset movement/location context requires transport/geospatial specialists where lawful.", {
+            "asset_ids": [aid for aid, a in assets.items() if a.get("asset_type") in {"VEHICLE", "VESSEL", "AIRCRAFT"}][:100],
+        })
+
+    if any(a.get("asset_type") in {"PATENT", "TRADEMARK", "LICENSE", "COPYRIGHT_ASSET", "SOFTWARE", "REPOSITORY"} for a in assets.values()):
+        add("TECHINT / REPOINT / LEGALINT", "IP/software/repository technical and legal context requires specialists.", {
+            "asset_ids": [aid for aid, a in assets.items() if a.get("asset_type") in {"PATENT", "TRADEMARK", "LICENSE", "COPYRIGHT_ASSET", "SOFTWARE", "REPOSITORY"}][:100],
+        })
+
+    if any(ass["exposures"].get("state") != "UNKNOWN" for ass in assessments.values()):
+        add("EXPOSUREINT / VULNINT / INCIDENTINT", "Exposure/vulnerability/compromise analysis requires security specialists; ASSETINT does not scan or probe.", {
+            "asset_ids": [aid for aid, ass in assessments.items() if ass["exposures"].get("state") != "UNKNOWN"][:100],
+        })
+
+    if any(g.get("type") == "LOCATION_PRECISION_RESTRICTED" for g in gaps):
+        add("PRIVACY_REVIEW / LEGALINT", "Higher location precision requires lawful authorization and privacy review.", {
+            "gap_ids": [g["gap_id"] for g in gaps if g.get("type") == "LOCATION_PRECISION_RESTRICTED"][:100],
+        })
+
+    return hands
+
+
+# --------------------------------------------------------------------
+# Graph memory
+# --------------------------------------------------------------------
+
+class GraphMemory:
+    def __init__(self) -> None:
+        self.nodes: List[Dict[str, Any]] = []
+        self.edges: List[Dict[str, Any]] = []
+        self.ids: Set[str] = set()
+
+    def node(self, ntype: str, nid: str, props: Optional[Dict[str, Any]] = None) -> None:
+        if nid and nid not in self.ids:
+            self.ids.add(nid)
+            self.nodes.append({"type": ntype, "id": nid, "properties": props or {}})
+
+    def edge(self, frm: str, to: str, etype: str, props: Optional[Dict[str, Any]] = None) -> None:
+        if frm and to:
+            self.edges.append({"from": frm, "to": to, "type": etype, "properties": props or {}})
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "nodes": self.nodes[:3000],
+            "edges": self.edges[:6000],
+            "note": "Asset graph preserves ownership/control/operation eras, encumbrances, valuation types, exposure uncertainty, and privacy restrictions. It does not prove beneficial ownership, current location, vulnerability, or legal sanctions status.",
+        }
+
+
+def build_graph(
+    assets: Dict[str, Dict[str, Any]],
+    assessments: Dict[str, Dict[str, Any]],
+    entities: Dict[str, Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    hypotheses: List[Dict[str, Any]],
+    gaps: List[Dict[str, Any]],
+    sources: Dict[str, Dict[str, Any]],
+) -> GraphMemory:
+    g = GraphMemory()
+
+    for eid, e in entities.items():
+        g.node("Entity", eid, {
+            "name": e.get("name"),
+            "entity_type": e.get("entity_type"),
+            "is_private_person": e.get("is_private_person"),
+        })
+
+    for aid, a in assets.items():
+        ass = assessments.get(aid, {})
+        g.node("Asset", aid, {
+            "asset_type": a.get("asset_type"),
+            "subtype": a.get("asset_subtype"),
+            "status": a.get("status"),
+            "identifier_masked": mask_value(a.get("identifier_normalized"), 4) if ass.get("privacy_sensitive") else a.get("identifier_normalized"),
+            "jurisdiction": a.get("jurisdiction"),
+            "criticality": a.get("criticality"),
+            "legal_owner_state": ass.get("legal_owner_state"),
+            "beneficial_owner_state": ass.get("beneficial_owner_state"),
+        })
+
+        for rt, summ in (ass.get("relationships") or {}).items():
+            for eid in summ.get("current_entities", []):
+                g.edge(aid, eid, f"CURRENT_{rt}", {"state": "CURRENT"})
+            for eid in summ.get("historical_entities", []):
+                g.edge(aid, eid, f"HISTORICAL_{rt}", {"state": "HISTORICAL"})
+
+        for enc in ass.get("encumbrances", {}).get("active_encumbrances", []):
+            holder = enc.get("holder_entity_id")
+            if holder:
+                g.node("Encumbrance", enc.get("encumbrance_id", stable_id("ENC", aid)), {
+                    "type": enc.get("encumbrance_type"),
+                    "status": enc.get("status"),
+                })
+                g.edge(aid, holder, "ENCUMBERED_BY", {"encumbrance_id": enc.get("encumbrance_id")})
+
+        for lease in ass.get("leases", {}).get("active_leases", []):
+            lessee = lease.get("lessee_entity_id")
+            lessor = lease.get("lessor_entity_id")
+            if lessee:
+                g.edge(aid, lessee, "LEASED_TO", {"lease_id": lease.get("lease_id")})
+            if lessor:
+                g.edge(lessor, aid, "LEASED_FROM", {"lease_id": lease.get("lease_id")})
+
+        for loc in ass.get("locations", []):
+            if loc.get("value") and loc.get("value") != "restricted":
+                lid = loc.get("location_id") or stable_id("LOC", aid)
+                g.node("Location", lid, {"precision": loc.get("precision"), "value": loc.get("value")})
+                g.edge(aid, lid, "LOCATED_AT", {})
+
+        for exp in ass.get("exposures", {}).get("by_type", []):
+            if exp.get("state") in {"EXPOSED", "RESTRICTED", "DISCOVERED_ONLY"}:
+                xid = stable_id("EXPO", aid, exp.get("exposure_type"))
+                g.node("Exposure", xid, {"type": exp.get("exposure_type"), "state": exp.get("state")})
+                g.edge(aid, xid, "EXPOSED_VIA_CANDIDATE", {})
+
+        for s in ass.get("sanctions", {}).get("records", []):
+            sid = s.get("sanction_id")
+            if sid:
+                g.node("SanctionContext", sid, {"status": s.get("status"), "program": s.get("program")})
+                if s.get("asset_id"):
+                    g.edge(aid, sid, "AFFECTED_BY_SANCTION_CONTEXT", {})
+                elif s.get("entity_id"):
+                    g.edge(s.get("entity_id"), sid, "ENTITY_SANCTION_CONTEXT", {})
+
+        for t in ass.get("transfers", {}).get("completed_transfers", []):
+            tid = t.get("transfer_id")
+            to = t.get("to_entity_id")
+            frm = t.get("from_entity_id")
+            if tid:
+                g.node("Transfer", tid, {"status": t.get("status"), "effective_at": iso(t.get("effective_at"))})
+                if frm:
+                    g.edge(frm, tid, "TRANSFERRED_FROM", {})
+                if to:
+                    g.edge(tid, to, "TRANSFERRED_TO", {})
+                g.edge(aid, tid, "ASSET_TRANSFER_EVENT", {})
+
+        for sid in a.get("source_ids", []):
+            g.node("Source", sid, {"source_type": sources.get(sid, {}).get("source_type")})
+            g.edge(aid, sid, "SUPPORTED_BY_SOURCE", {})
+
+    for c in contradictions[:500]:
+        g.node("Contradiction", c["contradiction_id"], {"type": c.get("type"), "severity": c.get("severity")})
+    for h in hypotheses[:500]:
+        g.node("Hypothesis", h["hypothesis_id"], {"category": h.get("category"), "asset_id": h.get("asset_id")})
+    for gap in gaps[:500]:
+        g.node("Gap", gap["gap_id"], {"type": gap.get("type"), "importance": gap.get("importance")})
+
+    return g
+
+
+def dual_ai_review_stub(
+    assessments: Dict[str, Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+    gaps: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    review = {
+        "status": "INSUFFICIENT_EVIDENCE",
+        "primary_conclusions": [],
+        "skeptic_challenges": [],
+        "comparison": "NO_SECOND_MODEL_CONFIGURED",
+        "notes": [
+            "Starter does not call an independent second model.",
+            "AI agreement is not asset corroboration.",
+            "Human/legal review required for consequential ownership, seizure, sanctions, private-location, or public accusation decisions.",
+        ],
+    }
+    if any(ass.get("legal_owner_state") in {"LEGAL_OWNER_SUPPORTED", "LEGAL_OWNER_CANDIDATE"} for ass in assessments.values()):
+        review["primary_conclusions"].append("Some current legal-owner states are resolved from provided records.")
+        review["skeptic_challenges"].append("Check registry lag, transfer registration, duplicate assets, and source dependence.")
+    if any(ass.get("beneficial_owner_state") == "UNKNOWN" for ass in assessments.values()):
+        review["primary_conclusions"].append("Beneficial ownership remains unresolved for some assets.")
+        review["skeptic_challenges"].append("Do not infer beneficial owner from use, payment, occupation, or registered company alone.")
+    if contradictions:
+        review["primary_conclusions"].append(f"{len(contradictions)} asset contradiction candidate(s) detected.")
+        review["skeptic_challenges"].append("Contradictions may be timing, registration, lease, duplicate record, or data-quality issues.")
+    if any(g.get("type") == "LOCATION_PRECISION_RESTRICTED" for g in gaps):
+        review["primary_conclusions"].append("Privacy minimization reduced location precision for sensitive assets.")
+        review["skeptic_challenges"].append("Do not attempt to recover exact private location without lawful authorization and necessity.")
+    if review["primary_conclusions"]:
+        review["status"] = "PARTIAL_AGREEMENT"
+    return review
+
+
+# --------------------------------------------------------------------
+# Result / report
+# --------------------------------------------------------------------
+
+def empty_result(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "case_id": manifest.get("case_id", "CASE-UNKNOWN"),
+        "task_id": manifest.get("task_id", "TASK-UNKNOWN"),
+        "objective": manifest.get("objective", ""),
+        "questions": manifest.get("questions", []) or [],
+        "generated_at": utc_now(),
+        "version": VERSION,
+        "source_ids": [],
+        "evidence_ids": [],
+        "assets": [],
+        "asset_types": [],
+        "asset_subtypes": [],
+        "asset_identifiers": [],
+        "registrations": [],
+        "jurisdictions": [],
+        "legal_owners": [],
+        "beneficial_owner_candidates": [],
+        "controllers": [],
+        "possessors": [],
+        "custodians": [],
+        "operators": [],
+        "users": [],
+        "lessees": [],
+        "lessors": [],
+        "ownership_eras": [],
+        "control_eras": [],
+        "operation_eras": [],
+        "transfer_events": [],
+        "asset_status": [],
+        "locations": [],
+        "location_precision": [],
+        "real_estate_context": [],
+        "vehicle_context": [],
+        "vessel_context": [],
+        "aircraft_context": [],
+        "facility_context": [],
+        "industrial_asset_context": [],
+        "it_assets": [],
+        "network_assets": [],
+        "domains": [],
+        "ip_assets": [],
+        "cloud_resources": [],
+        "repositories": [],
+        "software_assets": [],
+        "patents": [],
+        "trademarks": [],
+        "licenses": [],
+        "financial_asset_context": [],
+        "crypto_asset_handoffs": [],
+        "leases": [],
+        "liens": [],
+        "charges": [],
+        "mortgages": [],
+        "encumbrances": [],
+        "financing_context": [],
+        "purchase_prices": [],
+        "book_values": [],
+        "market_estimates": [],
+        "tax_values": [],
+        "insured_values": [],
+        "valuation_dates": [],
+        "asset_criticality": [],
+        "exposure_types": [],
+        "internet_exposure": [],
+        "physical_exposure": [],
+        "financial_exposure": [],
+        "regulatory_exposure": [],
+        "sanctions_context": [],
+        "supply_chain_context": [],
+        "procurement_context": [],
+        "trade_context": [],
+        "timeline_updates": [],
+        "observations": [],
+        "candidate_facts": [],
+        "supported_facts": [],
+        "partial_facts": [],
+        "disputed_facts": [],
+        "source_reliability": [],
+        "source_bias": [],
+        "source_limitations": [],
+        "source_pedigree": [],
+        "source_independence": [],
+        "contradictions": [],
+        "hypotheses": [],
+        "falsification_results": [],
+        "privacy_flags": [],
+        "legal_flags": [
+            "ASSETINT does not make final legal ownership, seizure, forfeiture, sanctions, or infringement determinations.",
+        ],
+        "unknowns": [],
+        "knowledge_gaps": [],
+        "recommended_next_actions": [],
+        "specialist_handoffs": [],
+        "limitations": [],
+        "dual_ai_review": {},
+        "graph_memory": {},
+        "status": "PARTIAL",
+    }
+
+
+def compute_source_bias(sources: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for sid, src in sources.items():
+        st = normalize_text(src.get("source_type", "unknown")).lower()
+        bias = []
+        if st in {"company_statement", "authorized_asset_register", "authorized_cmdb"}:
+            bias.append("self-reporting/inventory scope bias")
+        if st in {"commercial_database",}:
+            bias.append("lag/coverage/commercial aggregation bias")
+        if st in {"insurance_record",}:
+            bias.append("insured value may differ from market/legal ownership value")
+        if st in {"media", "social_post", "anonymous_source",}:
+            bias.append("unverified/allegation bias; requires primary record corroboration")
+        if st in {"official_title_registry", "official_transport_registry", "court_record",}:
+            bias.append("registry lag / jurisdictional scope / registration-vs-effective-date differences")
+        out.append({
+            "source_id": sid,
+            "source_type": st,
+            "potential_bias": bias,
+            "limitations": src.get("limitations", []),
+        })
+    return out
+
+
+def finalize_status(
+    policy_blocked: List[str],
+    auth_ok: bool,
+    assets: Dict[str, Any],
+    gaps: List[Dict[str, Any]],
+    contradictions: List[Dict[str, Any]],
+) -> str:
+    if policy_blocked:
+        return "POLICY_BLOCKED"
+    if not auth_ok:
+        return "BLOCKED_PERMISSION"
+    if not assets:
+        return "ASSET_UNRESOLVED"
+    if contradictions:
+        return "PARTIAL"
+    if any(g.get("importance") == "HIGH" for g in gaps):
+        return "PARTIAL"
+    if gaps:
+        return "PARTIAL"
+    return "SUCCEEDED"
+
+
+def display_identifier(asset: Dict[str, Any], ass: Dict[str, Any]) -> str:
+    ident = asset.get("identifier_normalized") or asset.get("identifier") or "None"
+    if ass.get("privacy_sensitive"):
+        return mask_value(ident, 3, 2)
+    return str(ident)
+
+
+def generate_report(result: Dict[str, Any]) -> str:
+    lines = ["# ASSETINT Evidence-Linked Asset Intelligence Report", ""]
+    lines += [
+        f"- Case ID: `{result.get('case_id')}`",
+        f"- Task ID: `{result.get('task_id')}`",
+        f"- Generated: `{result.get('generated_at')}`",
+        f"- Version: `{result.get('version')}`",
+        f"- Status: `{result.get('status')}`",
+        "",
+    ]
+
+    if result.get("status") == "POLICY_BLOCKED":
+        lines += ["## POLICY BLOCKED", "Violations:", *[f"- `{v}`" for v in result.get("violations", [])], ""]
+        lines += ["No asset intelligence was performed."]
+        return "\n".join(lines)
+
+    lines += ["## Objective", str(result.get("objective", "")), ""]
+    lines += ["## Lawful / Privacy / Safety Boundaries",
+              "- No stalking, private-person locating, real-time tracking, burglary/theft/repossession/targeting plans.",
+              "- No physical security weakness exploitation, sabotage, or weapon-targeting coordinates.",
+              "- No unauthorized scanning/access/login/IAM bypass/credential use/asset modification.",
+              "- No asset concealment, sanctions/tax/creditor/seizure evasion assistance.",
+              "- Legal owner ≠ beneficial owner ≠ controller ≠ operator ≠ user ≠ lessee.",
+              "- Discovered ≠ exposed ≠ vulnerable ≠ compromised.",
+              ""]
+
+    lines += ["## Asset Assessments"]
+    for a in result.get("assets", [])[:300]:
+        ass = a.get("assessment", {})
+        lines.append(f"### `{a.get('asset_id')}`")
+        lines.append(f"- Type/subtype: `{a.get('asset_type')}` / `{a.get('asset_subtype')}`")
+        lines.append(f"- Identifier: `{display_identifier(a, ass)}` valid={a.get('identifier_valid')}")
+        lines.append(f"- Jurisdiction/status/criticality: `{a.get('jurisdiction')}` / `{a.get('status')}` / `{a.get('criticality')}`")
+        lines.append(f"- As-of: `{iso(ass.get('as_of'))}`")
+        lines.append(f"- Legal owner: `{ass.get('legal_owner_state')}` current={ass.get('relationships', {}).get('LEGAL_OWNER', {}).get('current_entities', [])}")
+        lines.append(f"- Beneficial owner: `{ass.get('beneficial_owner_state')}`")
+        lines.append(f"- Control: `{ass.get('control_state')}` current={ass.get('relationships', {}).get('CONTROLLER', {}).get('current_entities', [])}")
+        lines.append(f"- Operator: `{ass.get('operator_state')}` current={ass.get('operator_current_entities', [])}")
+        lines.append(f"- Possessor/custodian/user: "
+                     f"possessor={ass.get('relationships', {}).get('POSSESSOR', {}).get('current_entities', [])}, "
+                     f"custodian={ass.get('relationships', {}).get('CUSTODIAN', {}).get('current_entities', [])}, "
+                     f"user={ass.get('relationships', {}).get('USER', {}).get('current_entities', [])}")
+        lines.append(f"- Lease state: `{ass.get('leases', {}).get('state')}` lessees={ass.get('leases', {}).get('current_lessees', [])} lessors={ass.get('leases', {}).get('current_lessors', [])}")
+        lines.append(f"- Encumbrance state: `{ass.get('encumbrances', {}).get('state')}` holders={ass.get('encumbrances', {}).get('current_holders', [])} types={ass.get('encumbrances', {}).get('active_types', [])}")
+        lines.append(f"- Transfer state: `{ass.get('transfers', {}).get('state')}` completed_to={ass.get('transfers', {}).get('completed_to_entities', [])}")
+        vals = ass.get("valuations", {}).get("by_type", [])
+        lines.append(f"- Valuations: {json.dumps([{k: v.get(k) for k in ('valuation_type','latest_value','currency','valuation_date','stale')} for v in vals], ensure_ascii=False, default=str)}")
+        locs = ass.get("locations", [])
+        lines.append(f"- Locations: {json.dumps([{k: l.get(k) for k in ('precision','value','observed_at','privacy_adjusted')} for l in locs], ensure_ascii=False, default=str)}")
+        exps = ass.get("exposures", {}).get("by_type", [])
+        lines.append(f"- Exposures: {json.dumps([{k: e.get(k) for k in ('exposure_type','state','observed_at','stale')} for e in exps], ensure_ascii=False, default=str)}")
+        sanc = ass.get("sanctions", {}).get("records", [])
+        lines.append(f"- Sanctions context: {json.dumps([{k: s.get(k) for k in ('program','status','relevance','legal_determination')} for s in sanc], ensure_ascii=False, default=str)}")
+        if ass.get("privacy_flags"):
+            lines.append(f"- Privacy flags: {ass.get('privacy_flags')}")
+        lines.append("")
+
+    lines += ["## Source Independence / Reliability"]
+    for a in result.get("assets", [])[:200]:
+        ass = a.get("assessment", {})
+        legal = ass.get("relationships", {}).get("LEGAL_OWNER", {})
+        lines.append(f"- `{a.get('asset_id')}` legal source independence=`{legal.get('source_independence')}` max_reliability=`{legal.get('max_source_reliability')}`")
+    lines.append("")
+
+    lines += ["## Contradictions"]
+    for c in result.get("contradictions", [])[:300]:
+        lines.append(f"- `{c.get('contradiction_id')}` [{c.get('severity')}] {c.get('type')}: {c.get('detail')}")
+        if c.get("possible_causes"):
+            lines.append(f"  - possible causes: {'; '.join(c['possible_causes'][:10])}")
+    lines.append("")
+
+    lines += ["## Competing Hypotheses / Falsification"]
+    for h in result.get("hypotheses", [])[:500]:
+        lines.append(f"- `{h.get('hypothesis_id')}` [{h.get('category')}] asset=`{h.get('asset_id')}`: {h.get('statement')}")
+        if h.get("falsification_conditions"):
+            lines.append(f"  - falsify if: {'; '.join(map(str, h['falsification_conditions'][:5]))}")
+    lines.append("")
+
+    lines += ["## Knowledge Gaps"]
+    for g in result.get("knowledge_gaps", [])[:500]:
+        lines.append(f"- `{g.get('gap_id')}` [{g.get('importance')}] {g.get('type')}: {g.get('recommended_source')}")
+    lines.append("")
+
+    lines += ["## Recommended Safe Next Actions"]
+    for a in result.get("recommended_next_actions", [])[:500]:
+        lines.append(f"- [{a.get('priority')}] {a.get('action')}")
+    lines.append("")
+
+    lines += ["## Specialist Handoffs"]
+    for h in result.get("specialist_handoffs", []):
+        lines.append(f"- {h.get('specialist')}: {h.get('reason')}")
+        lines.append(f"  - payload: `{json.dumps(h.get('payload', {}), ensure_ascii=False, default=str)}`"[:1000])
+    lines.append("")
+
+    lines += ["## Dual-AI Review Stub"]
+    dr = result.get("dual_ai_review", {})
+    lines.append(f"- Status: `{dr.get('status')}`")
+    lines.append(f"- Comparison: `{dr.get('comparison')}`")
+    for n in dr.get("notes", []):
+        lines.append(f"- {n}")
+    for c in dr.get("primary_conclusions", [])[:50]:
+        lines.append(f"- Primary: {c}")
+    for c in dr.get("skeptic_challenges", [])[:50]:
+        lines.append(f"- Skeptic: {c}")
+    lines.append("")
+
+    lines += ["## Limitations"]
+    for lim in result.get("limitations", []):
+        lines.append(f"- {lim}")
+    lines.append("")
+
+    lines += ["## Non-Negotiable Boundary",
+              "- Resolve the asset.",
+              "- Verify the identifier.",
+              "- Resolve legal title.",
+              "- Separate beneficial ownership.",
+              "- Separate control.",
+              "- Separate possession.",
+              "- Separate operation.",
+              "- Time-bound every relationship.",
+              "- Use the minimum necessary location precision.",
+              "- Distinguish discovery from exposure.",
+              "- Attribute ownership last."]
+
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------
+# Main analysis
+# --------------------------------------------------------------------
+
+def analyze_assetint_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    result = empty_result(manifest)
+
+    policy_blocked = policy_screen(manifest)
+    if policy_blocked:
+        result["status"] = "POLICY_BLOCKED"
+        result["violations"] = policy_blocked
+        result["limitations"] = [
+            "ASSETINT does not stalk, locate, track, target, burgle, steal, repossess, sabotage, scan/access without authorization, use stolen credentials, or assist asset concealment/evasion."
+        ]
+        return result
+
+    auth_ok, auth_reasons = authorization_check(manifest)
+    if not auth_ok:
+        result["status"] = "BLOCKED_PERMISSION"
+        result["limitations"] = auth_reasons
+        return result
+
+    sources = ingest_sources(manifest)
+    roots = build_source_roots(sources)
+    entities = ingest_entities(manifest)
+    assets = ingest_assets(manifest)
+
+    rels = ingest_relationships(manifest)
+    transfers = ingest_transfers(manifest)
+    encumbrances = ingest_encumbrances(manifest)
+    leases = ingest_leases(manifest)
+    valuations = ingest_valuations(manifest)
+    locations = ingest_locations(manifest)
+    exposures = ingest_exposures(manifest)
+    sanctions = ingest_sanctions(manifest)
+    regulatory = ingest_regulatory(manifest)
+
+    unknown_refs: List[Dict[str, Any]] = []
+    attach_records(assets, rels, "relationships", unknown_refs)
+    attach_records(assets, transfers, "transfers", unknown_refs)
+    attach_records(assets, encumbrances, "encumbrances", unknown_refs)
+    attach_records(assets, leases, "leases", unknown_refs)
+    attach_records(assets, valuations, "valuations", unknown_refs)
+    attach_records(assets, locations, "locations", unknown_refs)
+    attach_records(assets, exposures, "exposures", unknown_refs)
+    attach_records(assets, sanctions, "sanctions", unknown_refs)
+    attach_records(assets, regulatory, "regulatory", unknown_refs)
+
+    as_of = determine_as_of(manifest, assets, [rels, transfers, encumbrances, leases, valuations, locations, exposures, sanctions, regulatory], sources)
+
+    assessments = {aid: assess_asset(a, entities, sources, roots, as_of) for aid, a in assets.items()}
+    contradictions = detect_contradictions(assets, assessments, entities, sources, roots)
+    hypotheses = build_hypotheses(assets, assessments, entities)
+    gaps = build_gaps(assets, assessments, unknown_refs, contradictions, sources, roots, entities)
+    actions = build_next_actions(gaps)
+    handoffs = build_handoffs(assets, assessments, entities, gaps)
+    graph = build_graph(assets, assessments, entities, contradictions, hypotheses, gaps, sources)
+    review = dual_ai_review_stub(assessments, contradictions, gaps)
+
+    observations = [
+        f"Assets ingested/resolved: {len(assets)}.",
+        f"Entities ingested: {len(entities)}.",
+        f"Relationship records ingested: {len(rels)}.",
+        f"Transfer records: {len(transfers)}; encumbrances: {len(encumbrances)}; leases: {len(leases)}.",
+        f"Valuation records: {len(valuations)}; location records: {len(locations)}; exposure records: {len(exposures)}.",
+        f"Sanctions/regulatory records: {len(sanctions)}/{len(regulatory)}.",
+        f"As-of date used for temporal validation: {iso(as_of)}.",
+        f"Contradiction candidates: {len(contradictions)}.",
+        f"Competing hypotheses: {len(hypotheses)}.",
+        "No stalking, tracking, targeting, scanning, unauthorized access, credential use, concealment, or evasion assistance was performed.",
+        "Legal owner, beneficial owner, controller, possessor, custodian, operator, user, and lessee were kept separate.",
+        "Valuation types were preserved separately; no current value was invented.",
+        "Location precision was minimized for private-person sensitive assets.",
+        "Discovered was not equated with exposed, vulnerable, or compromised.",
+    ]
+
+    unknowns = []
+    for aid, ass in assessments.items():
+        if ass.get("legal_owner_state") == "UNKNOWN":
+            unknowns.append(f"Current legal owner unresolved for {aid}.")
+        if ass.get("beneficial_owner_state") == "UNKNOWN":
+            unknowns.append(f"Beneficial owner unresolved for {aid}.")
+        if ass.get("operator_state") == "UNKNOWN":
+            unknowns.append(f"Operator unresolved for {aid}.")
+        if ass["exposures"].get("state") == "UNKNOWN":
+            unknowns.append(f"Exposure state unresolved for {aid}.")
+    unknowns.append("Registered location is not necessarily current physical location.")
+    unknowns.append("Payment/occupation/use does not automatically establish legal or beneficial ownership.")
+    result["unknowns"] = list(dict.fromkeys(unknowns))[:500]
+
+    for aid, a in assets.items():
+        ass = assessments.get(aid, {})
+        a_out = dict(a)
+        a_out["assessment"] = ass
+        result["assets"].append(a_out)
+
+        result["asset_types"].append({"asset_id": aid, "asset_type": a.get("asset_type")})
+        if a.get("asset_subtype"):
+            result["asset_subtypes"].append({"asset_id": aid, "asset_subtype": a.get("asset_subtype")})
+        result["asset_identifiers"].append({
+            "asset_id": aid,
+            "identifier": display_identifier(a, ass),
+            "identifier_type": a.get("identifier_type"),
+            "identifier_valid": a.get("identifier_valid"),
+        })
+        result["jurisdictions"].append({"asset_id": aid, "jurisdiction": a.get("jurisdiction")})
+        result["asset_status"].append({"asset_id": aid, "status": a.get("status")})
+        result["asset_criticality"].append({"asset_id": aid, "criticality": a.get("criticality")})
+
+        legal_current = ass.get("relationships", {}).get("LEGAL_OWNER", {}).get("current_entities", [])
+        for eid in legal_current:
+            result["legal_owners"].append({"asset_id": aid, "entity_id": eid, "state": ass.get("legal_owner_state")})
+        for eid in ass.get("relationships", {}).get("BENEFICIAL_OWNER", {}).get("current_entities", []):
+            result["beneficial_owner_candidates"].append({"asset_id": aid, "entity_id": eid, "state": ass.get("beneficial_owner_state")})
+        for eid in ass.get("relationships", {}).get("CONTROLLER", {}).get("current_entities", []):
+            result["controllers"].append({"asset_id": aid, "entity_id": eid, "state": ass.get("control_state")})
+        for eid in ass.get("relationships", {}).get("POSSESSOR", {}).get("current_entities", []):
+            result["possessors"].append({"asset_id": aid, "entity_id": eid})
+        for eid in ass.get("relationships", {}).get("CUSTODIAN", {}).get("current_entities", []):
+            result["custodians"].append({"asset_id": aid, "entity_id": eid})
+        for eid in ass.get("operator_current_entities", []):
+            result["operators"].append({"asset_id": aid, "entity_id": eid, "state": ass.get("operator_state")})
+        for eid in ass.get("relationships", {}).get("USER", {}).get("current_entities", []):
+            result["users"].append({"asset_id": aid, "entity_id": eid})
+        for eid in ass.get("leases", {}).get("current_lessees", []):
+            result["lessees"].append({"asset_id": aid, "entity_id": eid})
+        for eid in ass.get("leases", {}).get("current_lessors", []):
+            result["lessors"].append({"asset_id": aid, "entity_id": eid})
+
+        for rt in ("LEGAL_OWNER", "CONTROLLER", "OPERATOR"):
+            for era in ass.get("relationships", {}).get(rt, {}).get("eras", []):
+                bucket = {
+                    "LEGAL_OWNER": result["ownership_eras"],
+                    "CONTROLLER": result["control_eras"],
+                    "OPERATOR": result["operation_eras"],
+                }[rt]
+                bucket.append({
+                    "asset_id": aid,
+                    "relationship_type": rt,
+                    "entity_id": era.get("entity_id"),
+                    "valid_from": iso(era.get("valid_from")),
+                    "valid_to": iso(era.get("valid_to")),
+                    "current": era.get("current"),
+                    "historical": era.get("historical"),
+                })
+
+        result["transfer_events"].extend(ass.get("transfers", {}).get("completed_transfers", []))
+        result["leases"].extend(ass.get("leases", {}).get("active_leases", []))
+        result["encumbrances"].extend(ass.get("encumbrances", {}).get("active_encumbrances", []))
+        for e in ass.get("encumbrances", {}).get("active_encumbrances", []):
+            if e.get("encumbrance_type") == "LIEN":
+                result["liens"].append(e)
+            elif e.get("encumbrance_type") == "CHARGE":
+                result["charges"].append(e)
+            elif e.get("encumbrance_type") == "MORTGAGE":
+                result["mortgages"].append(e)
+
+        for v in ass.get("valuations", {}).get("by_type", []):
+            item = {"asset_id": aid, **v, "valuation_date": iso(v.get("valuation_date"))}
+            if v.get("valuation_type") == "PURCHASE_PRICE":
+                result["purchase_prices"].append(item)
+            elif v.get("valuation_type") == "BOOK_VALUE":
+                result["book_values"].append(item)
+            elif v.get("valuation_type") == "MARKET_ESTIMATE":
+                result["market_estimates"].append(item)
+            elif v.get("valuation_type") == "TAX_VALUE":
+                result["tax_values"].append(item)
+            elif v.get("valuation_type") == "INSURED_VALUE":
+                result["insured_values"].append(item)
+            result["valuation_dates"].append({"asset_id": aid, "valuation_type": v.get("valuation_type"), "date": iso(v.get("valuation_date"))})
+
+        for loc in ass.get("locations", []):
+            result["locations"].append({**loc, "observed_at": iso(loc.get("observed_at"))})
+            result["location_precision"].append({"asset_id": aid, "precision": loc.get("precision"), "privacy_adjusted": loc.get("privacy_adjusted", False)})
+
+        for exp in ass.get("exposures", {}).get("by_type", []):
+            result["exposure_types"].append({"asset_id": aid, **exp, "observed_at": iso(exp.get("observed_at"))})
+            if exp.get("exposure_type") == "INTERNET_EXPOSURE":
+                result["internet_exposure"].append({"asset_id": aid, "state": exp.get("state")})
+            elif exp.get("exposure_type") == "PHYSICAL_EXPOSURE":
+                result["physical_exposure"].append({"asset_id": aid, "state": exp.get("state")})
+            elif exp.get("exposure_type") == "FINANCIAL_EXPOSURE":
+                result["financial_exposure"].append({"asset_id": aid, "state": exp.get("state")})
+            elif exp.get("exposure_type") == "REGULATORY_EXPOSURE":
+                result["regulatory_exposure"].append({"asset_id": aid, "state": exp.get("state")})
+
+        if ass.get("sanctions", {}).get("records"):
+            result["sanctions_context"].extend([{"asset_id": aid, **s, "effective_at": iso(s.get("effective_at"))} for s in ass["sanctions"]["records"]])
+
+        if a.get("asset_type") == "REAL_ESTATE":
+            result["real_estate_context"].append({"asset_id": aid, "subtype": a.get("asset_subtype"), "jurisdiction": a.get("jurisdiction")})
+        elif a.get("asset_type") == "VEHICLE":
+            result["vehicle_context"].append({"asset_id": aid, "identifier": display_identifier(a, ass), "jurisdiction": a.get("jurisdiction")})
+        elif a.get("asset_type") == "VESSEL":
+            result["vessel_context"].append({"asset_id": aid, "identifier": display_identifier(a, ass), "jurisdiction": a.get("jurisdiction")})
+        elif a.get("asset_type") == "AIRCRAFT":
+            result["aircraft_context"].append({"asset_id": aid, "identifier": display_identifier(a, ass), "jurisdiction": a.get("jurisdiction")})
+        elif a.get("asset_type") in {"OFFICE", "WAREHOUSE", "FACTORY", "PLANT", "LAB", "DATA_CENTER"}:
+            result["facility_context"].append({"asset_id": aid, "asset_type": a.get("asset_type")})
+        elif a.get("asset_type") in {"INDUSTRIAL_EQUIPMENT", "MACHINERY", "ENERGY_ASSET", "TELECOM_ASSET"}:
+            result["industrial_asset_context"].append({"asset_id": aid, "asset_type": a.get("asset_type")})
+        elif a.get("asset_type") in {"IT_ASSET", "SERVER", "ENDPOINT"}:
+            result["it_assets"].append({"asset_id": aid, "asset_type": a.get("asset_type")})
+        elif a.get("asset_type") == "NETWORK_ASSET":
+            result["network_assets"].append({"asset_id": aid})
+        elif a.get("asset_type") == "DOMAIN":
+            result["domains"].append({"asset_id": aid, "domain": display_identifier(a, ass)})
+        elif a.get("asset_type") in {"IP_ADDRESS", "PREFIX"}:
+            result["ip_assets"].append({"asset_id": aid, "ip_or_prefix": display_identifier(a, ass)})
+        elif a.get("asset_type") in {"CLOUD_RESOURCE", "SAAS_RESOURCE"}:
+            result["cloud_resources"].append({"asset_id": aid, "asset_type": a.get("asset_type")})
+        elif a.get("asset_type") == "REPOSITORY":
+            result["repositories"].append({"asset_id": aid})
+        elif a.get("asset_type") in {"SOFTWARE", "DATABASE", "DIGITAL_ACCOUNT"}:
+            result["software_assets"].append({"asset_id": aid, "asset_type": a.get("asset_type")})
+        elif a.get("asset_type") == "PATENT":
+            result["patents"].append({"asset_id": aid, "identifier": display_identifier(a, ass)})
+        elif a.get("asset_type") == "TRADEMARK":
+            result["trademarks"].append({"asset_id": aid, "identifier": display_identifier(a, ass)})
+        elif a.get("asset_type") == "LICENSE":
+            result["licenses"].append({"asset_id": aid})
+        elif a.get("asset_type") == "CRYPTO_ASSET_REFERENCE":
+            result["crypto_asset_handoffs"].append({"asset_id": aid, "reason": "Crypto asset custody/flow analysis requires CRYPTOINT/FININT."})
+
+        for sid in a.get("source_ids", []):
+            result["source_ids"].append(sid)
+
+    for sid, src in sources.items():
+        result["source_reliability"].append({
+            "source_id": sid,
+            "source_type": src.get("source_type"),
+            "reliability": src.get("reliability"),
+        })
+        result["source_limitations"].append({
+            "source_id": sid,
+            "limitations": src.get("limitations", []),
+        })
+        result["source_pedigree"].append({
+            "source_id": sid,
+            "upstream_source_id": src.get("upstream_source_id"),
+            "root_source_id": roots.get(sid, sid),
+        })
+    result["source_bias"] = compute_source_bias(sources)
+
+    for aid, ass in assessments.items():
+        legal = ass.get("relationships", {}).get("LEGAL_OWNER", {})
+        result["source_independence"].append({
+            "asset_id": aid,
+            "relationship": "LEGAL_OWNER",
+            "state": legal.get("source_independence"),
+            "max_reliability": legal.get("max_source_reliability"),
+        })
+
+    for aid, ass in assessments.items():
+        if ass.get("legal_owner_state") in {"LEGAL_OWNER_SUPPORTED"}:
+            for eid in ass["relationships"]["LEGAL_OWNER"].get("current_entities", []):
+                result["supported_facts"].append({
+                    "asset_id": aid,
+                    "statement": f"Provided authoritative records support {eid} as current legal owner as of {iso(ass.get('as_of'))}.",
+                })
+        elif ass.get("legal_owner_state") in {"LEGAL_OWNER_CANDIDATE", "CONFLICTING_CURRENT_LEGAL_OWNERS"}:
+            result["partial_facts"].append({
+                "asset_id": aid,
+                "statement": f"Legal owner state is {ass.get('legal_owner_state')} based on provided records.",
+            })
+        else:
+            result["candidate_facts"].append({
+                "asset_id": aid,
+                "statement": f"Legal owner unresolved for {aid}.",
+            })
+
+    for c in contradictions:
+        result["disputed_facts"].append({
+            "contradiction_id": c["contradiction_id"],
+            "statement": c.get("detail", "Asset contradiction candidate."),
+        })
+
+    result["observations"] = observations
+    result["contradictions"] = contradictions
+    result["hypotheses"] = hypotheses
+    result["falsification_results"] = [
+        {
+            "hypothesis_id": h["hypothesis_id"],
+            "category": h.get("category"),
+            "opposition": h.get("opposition", []),
+            "falsification_conditions": h.get("falsification_conditions", []),
+        }
+        for h in hypotheses
+    ]
+    result["knowledge_gaps"] = gaps
+    result["recommended_next_actions"] = actions
+    result["specialist_handoffs"] = handoffs
+    result["dual_ai_review"] = review
+    result["graph_memory"] = graph.to_dict()
+
+    privacy_flags = []
+    for aid, ass in assessments.items():
+        if ass.get("privacy_flags"):
+            privacy_flags.extend([f"{aid}: {x}" for x in ass["privacy_flags"]])
+    privacy_flags.extend([
+        "No real-time tracking or private-person locating was performed.",
+        "Exact private residence/vehicle location precision is minimized by default.",
+        "No physical security weakness, entry route, guard schedule, or sabotage point analysis was produced.",
+    ])
+    result["privacy_flags"] = list(dict.fromkeys(privacy_flags))[:300]
+
+    base_limits = [
+        "ASSETINT starter uses only provided/local authorized records; no live registry access, scanning, probing, credential use, or asset modification was performed.",
+        "Identifier resolves asset, not ownership.",
+        "Legal owner is not beneficial owner; beneficial owner is not operator; operator is not user; lessee is not owner.",
+        "Current ownership/control/operation is evaluated only as of the assembled as-of date.",
+        "Registered location is not current physical location; private-location precision is minimized.",
+        "Valuation types are not interchangeable; no current value is invented from old records.",
+        "Discovered is not exposed; exposed is not vulnerable; vulnerable is not compromised.",
+        "Sanctions/regulatory context is recorded but final legal determination is not made.",
+        "No stalking, tracking, targeting, theft, repossession, sabotage, unauthorized access, concealment, or evasion assistance was provided.",
+    ]
+    if auth_reasons:
+        base_limits.extend(auth_reasons)
+    result["limitations"] = list(dict.fromkeys(base_limits))
+
+    result["status"] = finalize_status(policy_blocked, auth_ok, assets, gaps, contradictions)
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="TRACEATLAS ASSETINT safe starter")
+    parser.add_argument("--manifest", required=True, help="Path to ASSETINT manifest JSON")
+    parser.add_argument("--output", default="assetint_result.json", help="Output JSON path")
+    parser.add_argument("--report", default="assetint_report.md", help="Output Markdown report path")
+    args = parser.parse_args()
+
+    try:
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"ERROR reading manifest: {exc}", file=sys.stderr)
+        return 2
+
+    result = analyze_assetint_manifest(manifest)
+
+    Path(args.output).write_text(
+        json.dumps(json_safe(result), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    Path(args.report).write_text(generate_report(result), encoding="utf-8")
+
+    print(f"Wrote: {args.output}")
+    print(f"Wrote: {args.report}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+{
+  "case_id": "ASSET-CASE-001",
+  "task_id": "ASSET-TASK-001",
+  "objective": "Resolve lawful asset ownership/control/exposure context for synthetic corporate and digital assets, while minimizing private-location detail and avoiding unauthorized access or targeting.",
+  "questions": [
+    "Which assets are resolved from authorized records?",
+    "Are legal owner, beneficial owner, controller, operator, lessee, and encumbrance holder kept separate?",
+    "What ownership/control/exposure contradictions or gaps remain?",
+    "What safe next actions and specialist handoffs are appropriate?"
+  ],
+  "authorization": {
+    "approved": true,
+    "scope": "public_and_authorized_records",
+    "model_mode": "LOCAL_ONLY",
+    "cloud_approved": false,
+    "internal_asset_data_approved": false,
+    "private_location_approved": false
+  },
+  "time_range": {
+    "as_of": "2026-10-09"
+  },
+  "sources": [
+    {
+      "source_id": "STREG",
+      "source_type": "official_title_registry",
+      "observed_at": "2026-10-01T00:00:00Z"
+    },
+    {
+      "source_id": "SCF",
+      "source_type": "official_corporate_filing",
+      "observed_at": "2026-09-15T00:00:00Z"
+    },
+    {
+      "source_id": "SLEASE",
+      "source_type": "company_statement",
+      "observed_at": "2026-08-01T00:00:00Z"
+    },
+    {
+      "source_id": "SBANK",
+      "source_type": "financial_record",
+      "observed_at": "2026-07-01T00:00:00Z"
+    },
+    {
+      "source_id": "SDOMREG",
+      "source_type": "authorized_asset_register",
+      "observed_at": "2026-10-05T00:00:00Z"
+    },
+    {
+      "source_id": "SNEWS",
+      "source_type": "media",
+      "upstream_source_id": "STREG",
+      "observed_at": "2026-10-06T00:00:00Z"
+    }
+  ],
+  "entities": [
+    {
+      "entity_id": "CO-HOLD",
+      "name": "Synthetic Holding Company",
+      "entity_type": "COMPANY",
+      "is_private_person": false,
+      "jurisdiction": "SG",
+      "source_ids": ["SCF"]
+    },
+    {
+      "entity_id": "CO-OPS",
+      "name": "Synthetic Operations Company",
+      "entity_type": "COMPANY",
+      "is_private_person": false,
+      "jurisdiction": "SG",
+      "source_ids": ["SCF"]
+    },
+    {
+      "entity_id": "CO-LEASE",
+      "name": "Synthetic Logistics Tenant",
+      "entity_type": "COMPANY",
+      "is_private_person": false,
+      "jurisdiction": "SG",
+      "source_ids": ["SLEASE"]
+    },
+    {
+      "entity_id": "BANK-SEC",
+      "name": "Synthetic Secured Lender",
+      "entity_type": "ORGANIZATION",
+      "is_private_person": false,
+      "jurisdiction": "SG",
+      "source_ids": ["SBANK"]
+    },
+    {
+      "entity_id": "P-SYN",
+      "name": "Synthetic Private Individual",
+      "entity_type": "PERSON",
+      "is_private_person": true,
+      "jurisdiction": "US-MN",
+      "source_ids": ["STREG"]
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "A1",
+      "asset_type": "WAREHOUSE",
+      "asset_subtype": "LOGISTICS_FACILITY",
+      "name": "Synthetic Warehouse 1",
+      "identifier": "TITLE-SG-001",
+      "identifier_type": "TITLE_NUMBER",
+      "jurisdiction": "SG",
+      "status": "ACTIVE",
+      "criticality": "BUSINESS_CRITICAL",
+      "registered_at": "2022-03-01",
+      "observed_at": "2026-10-01",
+      "source_ids": ["STREG", "SCF"],
+      "confidence": 0.82
+    },
+    {
+      "asset_id": "A2",
+      "asset_type": "DOMAIN",
+      "asset_subtype": "CORPORATE_WEB_PROPERTY",
+      "name": "Synthetic Corporate Domain",
+      "identifier": "synthetic-example.com",
+      "identifier_type": "DOMAIN",
+      "jurisdiction": "GLOBAL",
+      "status": "ACTIVE",
+      "criticality": "MISSION_CRITICAL",
+      "registered_at": "2019-05-01",
+      "observed_at": "2026-10-05",
+      "source_ids": ["SDOMREG"],
+      "confidence": 0.78
+    },
+    {
+      "asset_id": "A3",
+      "asset_type": "REAL_ESTATE",
+      "asset_subtype": "PRIVATE_RESIDENCE",
+      "name": "Synthetic Private Residence",
+      "identifier": "PARCEL-US-MN-3",
+      "identifier_type": "PARCEL_NUMBER",
+      "jurisdiction": "US-MN",
+      "status": "ACTIVE",
+      "criticality": "INFORMATIONAL",
+      "registered_at": "2020-01-01",
+      "observed_at": "2026-10-01",
+      "source_ids": ["STREG"],
+      "confidence": 0.70
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "R1",
+      "asset_id": "A1",
+      "entity_id": "CO-HOLD",
+      "relationship_type": "LEGAL_OWNER",
+      "valid_from": "2022-03-01",
+      "valid_to": null,
+      "state": "LEGAL_OWNER_SUPPORTED",
+      "source_ids": ["STREG", "SCF"],
+      "confidence": 0.86
+    },
+    {
+      "relationship_id": "R2",
+      "asset_id": "A1",
+      "entity_id": "CO-OPS",
+      "relationship_type": "OPERATOR",
+      "valid_from": "2022-04-01",
+      "valid_to": null,
+      "state": "OPERATOR_SUPPORTED",
+      "source_ids": ["SCF", "SLEASE"],
+      "confidence": 0.78
+    },
+    {
+      "relationship_id": "R3",
+      "asset_id": "A1",
+      "entity_id": "CO-LEASE",
+      "relationship_type": "LESSEE",
+      "valid_from": "2024-01-01",
+      "valid_to": null,
+      "state": "ACTIVE_LESSEE",
+      "source_ids": ["SLEASE"],
+      "confidence": 0.72
+    },
+    {
+      "relationship_id": "R4",
+      "asset_id": "A2",
+      "entity_id": "CO-HOLD",
+      "relationship_type": "REGISTERED_TO",
+      "valid_from": "2019-05-01",
+      "valid_to": null,
+      "state": "REGISTERED_TO_CANDIDATE",
+      "source_ids": ["SDOMREG"],
+      "confidence": 0.70
+    },
+    {
+      "relationship_id": "R5",
+      "asset_id": "A2",
+      "entity_id": "CO-OPS",
+      "relationship_type": "OPERATOR",
+      "valid_from": "2020-01-01",
+      "valid_to": null,
+      "state": "OPERATOR_SUPPORTED",
+      "source_ids": ["SDOMREG", "SCF"],
+      "confidence": 0.74
+    },
+    {
+      "relationship_id": "R6",
+      "asset_id": "A3",
+      "entity_id": "P-SYN",
+      "relationship_type": "LEGAL_OWNER",
+      "valid_from": "2020-01-01",
+      "valid_to": null,
+      "state": "LEGAL_OWNER_SUPPORTED",
+      "source_ids": ["STREG"],
+      "confidence": 0.80
+    },
+    {
+      "relationship_id": "R7",
+      "asset_id": "A3",
+      "entity_id": "P-SYN",
+      "relationship_type": "BENEFICIAL_OWNER",
+      "valid_from": "2020-01-01",
+      "valid_to": null,
+      "state": "OFFICIALLY_REPORTED",
+      "source_ids": ["STREG"],
+      "confidence": 0.78
+    }
+  ],
+  "transfer_events": [
+    {
+      "transfer_id": "T1",
+      "asset_id": "A1",
+      "from_entity_id": "CO-OLD",
+      "to_entity_id": "CO-HOLD",
+      "event_type": "SALE",
+      "effective_at": "2022-02-15",
+      "registered_at": "2022-03-01",
+      "status": "COMPLETED",
+      "consideration": 45000000,
+      "currency": "USD",
+      "source_ids": ["STREG", "SCF"],
+      "confidence": 0.84
+    }
+  ],
+  "leases": [
+    {
+      "lease_id": "L1",
+      "asset_id": "A1",
+      "lessor_entity_id": "CO-HOLD",
+      "lessee_entity_id": "CO-LEASE",
+      "start_date": "2024-01-01",
+      "end_date": "2029-12-31",
+      "status": "ACTIVE",
+      "source_ids": ["SLEASE"],
+      "confidence": 0.72
+    }
+  ],
+  "encumbrances": [
+    {
+      "encumbrance_id": "E1",
+      "asset_id": "A1",
+      "holder_entity_id": "BANK-SEC",
+      "encumbrance_type": "MORTGAGE",
+      "amount": 30000000,
+      "currency": "USD",
+      "created_at": "2022-03-10",
+      "released_at": null,
+      "status": "ACTIVE",
+      "source_ids": ["SBANK", "STREG"],
+      "confidence": 0.80
+    },
+    {
+      "encumbrance_id": "E2",
+      "asset_id": "A1",
+      "holder_entity_id": "BANK-SEC",
+      "encumbrance_type": "CHARGE",
+      "amount": 5000000,
+      "currency": "USD",
+      "created_at": "2023-01-01",
+      "released_at": "2025-06-01",
+      "status": "RELEASED",
+      "source_ids": ["SBANK"],
+      "confidence": 0.70
+    }
+  ],
+  "valuation_records": [
+    {
+      "valuation_id": "V1",
+      "asset_id": "A1",
+      "valuation_type": "PURCHASE_PRICE",
+      "value": 45000000,
+      "currency": "USD",
+      "valuation_date": "2022-02-15",
+      "method": "TRANSFER_CONSIDERATION",
+      "source_ids": ["STREG", "SCF"],
+      "confidence": 0.84
+    },
+    {
+      "valuation_id": "V2",
+      "asset_id": "A1",
+      "valuation_type": "BOOK_VALUE",
+      "value": 41000000,
+      "currency": "USD",
+      "valuation_date": "2025-12-31",
+      "method": "CORPORATE_ACCOUNTING",
+      "source_ids": ["SCF"],
+      "confidence": 0.76
+    },
+    {
+      "valuation_id": "V3",
+      "asset_id": "A2",
+      "valuation_type": "SOURCE_CLAIMED_VALUE",
+      "value": 250000,
+      "currency": "USD",
+      "valuation_date": "2026-01-01",
+      "method": "INTERNAL_ASSET_REGISTER",
+      "source_ids": ["SDOMREG"],
+      "confidence": 0.55
+    }
+  ],
+  "location_records": [
+    {
+      "location_id": "LOC1",
+      "asset_id": "A1",
+      "location_precision": "CITY",
+      "value": "Singapore",
+      "observed_at": "2026-10-01",
+      "source_ids": ["STREG"],
+      "confidence": 0.80
+    },
+    {
+      "location_id": "LOC2",
+      "asset_id": "A3",
+      "location_precision": "SITE",
+      "value": "Synthetic site reference",
+      "observed_at": "2026-10-01",
+      "source_ids": ["STREG"],
+      "confidence": 0.70
+    }
+  ],
+  "exposure_records": [
+    {
+      "exposure_id": "EXP1",
+      "asset_id": "A2",
+      "exposure_type": "INTERNET_EXPOSURE",
+      "state": "EXPOSED",
+      "interface": "public_dns",
+      "observed_at": "2026-10-05",
+      "source_ids": ["SDOMREG"],
+      "confidence": 0.72
+    },
+    {
+      "exposure_id": "EXP2",
+      "asset_id": "A1",
+      "exposure_type": "PUBLIC_RECORD_EXPOSURE",
+      "state": "EXPOSED",
+      "interface": "title_registry",
+      "observed_at": "2026-10-01",
+      "source_ids": ["STREG"],
+      "confidence": 0.80
+    }
+  ],
+  "sanctions_records": [],
+  "regulatory_records": []
+}

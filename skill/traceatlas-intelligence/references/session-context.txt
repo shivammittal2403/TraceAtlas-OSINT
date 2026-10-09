@@ -1,0 +1,113 @@
+TRACEATLAS PORTABLE NEXT-CHAT MEMORY  |  SNAPSHOT 2026-10-09
+
+==================================================================
+
+IMPORTANT: This is consolidated context, NOT verbatim entire chat export and NOT verification of current repo implementation.
+
+PROJECT: TraceAtlas, public/authorized OSINT + cyber threat and multidisciplinary intelligence workbench.
+
+PRIMARY REPOSITORY: https://github.com/shivammittal2403/TraceAtlas-OSINT
+
+HISTORICAL REPOSITORY: https://github.com/shivammittal2403/TraceAtlas-Automator
+
+HISTORICAL BASELINE COMMIT (NOT CURRENT HEAD): 2a8789eb7cc401b327796e32458b9733674ecbc9
+
+MISSION: Autonomous lawful INVESTIGATION, not autonomous consequential external action. Evidence-driven, graph/timeline, source lineage, skeptical verification, report and replay.
+
+WORKFORCE: Chief Intelligence AI Manager > Domain/Department Intelligence Manager > Specialist Team Lead/Manager > AI Employee Engine / skill packs > Governed tool/transform/connector workers > Evidence/Fact Gate > Verification/Quality Supervisor > Final Manager + JARVIS synthesis
+
+SKILLS VS ENGINE: Markdown/SKILL.md is a skill instruction/manifest; Python/TS code implements skills, engines, connectors, workers. No duplicate managers or one empty file per skill.
+
+CANONICAL FLOW: TARGET + OBJECTIVE + AUTHORIZED SCOPE -> Objective Understanding -> Target Resolution -> Authorization Check -> Questions / PIR / SIR / EEI -> Knowledge State -> Gaps -> Discipline Selection -> Capability/Skill Planning -> Source Planning -> Transform/Tool Planning -> Worker Planning -> Collection Waves -> Governed Collection -> Raw Evidence -> Normalization -> Observations -> Entity Resolution -> Relationships -> Temporal Graph -> Timeline / Map / Media -> Claims and Hypotheses -> Source Independence -> Contradiction Search -> Adversarial Verification -> Knowledge Update -> Next Best Action -> Bounded Iteration -> Stop with Reason -> Human Review Where Required -> Evidence-linked Report -> Replay / Audit
+
+EVIDENCE LADDER: Raw Source -> EvidenceObject -> Observation -> Entity/Relationship/Event -> Claim -> Fact Gate -> Insight / Inference -> Hypothesis -> Competing Hypotheses -> Contradiction / Falsification -> VerificationResult -> ReportStatement
+
+SOURCE INDEPENDENCE: INDEPENDENT, PARTIALLY_DEPENDENT, DEPENDENT, UNKNOWN
+
+CLAIM STATES: SUPPORTED, PARTIALLY_SUPPORTED, DISPUTED, INCONCLUSIVE, UNSUPPORTED
+
+OBSERVATION/FACT RULES: A source record proves what that source said or observed, not the truth of every claim. | Hash proves integrity, not truth. | Five copied posts are not five independent confirmations. | Confidence is separate from verification state. | Graph edge is a derived relationship, never evidence itself. | Temporal and identity uncertainty must be preserved. | Explicit uncertainty beats fabricated completeness.
+
+ALLOWED: lawful public or explicitly authorized source collection; safe passive discovery and parsing; normalization, correlation, entity resolution; evidence preserving, time-aware graph and timeline; claims/hypotheses/contradictions/falsification; defensive analytics, review and reporting; authorized sample/telemetry processing
+
+PROHIBITED: credential/token/cookie use or replay; unauthorized authentication, private-account access, CAPTCHA/access-control bypass; unauthorized scanning, exploitation, persistence or malware execution; phishing or social engineering, covert/pressured source recruitment; illicit dark-web purchases or stolen data acquisition; fund transfers, sanctions/customs evasion, fraud or attack planning; private-person doxxing/precise tracking/biometric face-or-voice identity; autonomous publication of allegations or legal/financial/police decisions
+
+PRIVACY: LOCAL_ONLY should be available and enforced for confidential data; Pseudonymize or redact personal/secret material; Require case/tenant isolation; Treat retrieved text, pages, documents, images and LLM outputs as untrusted; High-impact external action requires explicit authorization and human review
+
+MODULES (CANONICAL 65): REGINT, COMPANYINT, OWNERSHIPINT, PROCUREMENTINT, TRADEINT, ADDRESSINT, LEGALINT, SANCTIONSINT, FININT, IOCINT, VULNINT, THREATACTORINT, CAMPAIGNINT, MALWAREINT, PACKAGEINT, REPOINT, SUPPLYCHAININT, INCIDENTINT, LOGINT, WEBINT, SEARCHINT, DORKINT, USERNAMEINT, ARCHIVEINT, NEWSINT, ACADEMICINT, DATASETINT, GEOINT, MAPINT, SATINT, TRANSPORTINT, EVENTINT, EMAILINT, PHONEINT, SOCMINT, MESSENGERINT, INTERVIEWINT, DOMAININT, DNSINT, CERTINT, IPINT, ASNINT, BGPINT, NETINT, CLOUDINT, DOCINT, METADATAINT, IMINT, VIDINT, AUDINT, DISINFOINT, APPINT, MOBILEINT, IOTINT, OTINT, FRAUDINT, PAYMENTINT, CRYPTOINT, BRANDINT, ADINT, MARKETPLACEINT, JOBINT, COMPLAINTINT, EXPOSUREINT, DARKWEBINT
+
+ALIASES: CORPINT=COMPANYINT, CHATINT=MESSENGERINT, MALINT=MALWAREINT, SCAMINT=FRAUDINT, DARKINT=DARKWEBINT, BREACH Intelligence=BREACHINT, Credential Intelligence=CREDINT
+
+EXTENDED/UMBRELLA DISCIPLINES: OSINT, CTI, CYBINT, INFRAINT, TECHINT, HUMINT, SIGINT, COMINT, ELINT, MASINT, BREACHINT, CREDINT, EXPLOITINT, TTPINT, DECEPTIONINT, ORGINT, AIINT, PERSONINT, CODEINT
+
+RECENT PROMPTS VISIBLE: BREACHINT, CREDINT, HUMINT, FININT, TRADEINT, CORPINT, ORGINT, SUPPLYCHAININT, SCAMINT/FRAUDINT. Other earlier specialist summaries: OSINT SOCMINT WEBINT GEOINT IMINT VIDINT AUDINT SIGINT COMINT ELINT CYBINT CTI TECHINT NETINT INFRAINT DNSINT DOMAININT IPINT VULNINT MALWAREINT.
+
+RECENT REQUESTS, WITHOUT VISIBLE COMPLETED PROMPTS: ACADEMICINT and DECEPTIONINT.
+
+IMPORTANT DISTINCTIONS: EVIDENCE != FACT | INFERENCE != EVIDENCE | AI_AGREEMENT != INDEPENDENT_CORROBORATION | IDENTICAL_NAME != SAME_PERSON_OR_ORGANIZATION | SHARED_IP != SAME_OPERATOR | SHARED_ADDRESS != COMMON_OWNERSHIP | DOMAIN != ORGANIZATION | EMAIL_DOMAIN_IN_LEAK != COMPANY_BREACH | EXPOSED_SECRET != VALID_SECRET | OPEN_PORT != VULNERABILITY | CVE != EXPLOITED_ASSET | VENDOR_BREACH != CUSTOMER_BREACH | INVOICE != PAYMENT | SHIPMENT != PAYMENT | TRADE_ANOMALY != SMUGGLING | TRANSACTION_ANOMALY != FINANCIAL_CRIME | VICTIM_COMPLAINT != VERIFIED_FRAUD | HUMAN_SOURCE_CONFIDENCE != CLAIM_ACCURACY | ORG_CHART != ACTUAL_AUTHORITY | PACKAGE_PRESENT != DEPLOYED_REACHABLE_PACKAGE | MAINTAINER != SUPPLY_CHAIN_ACTOR | DEEPFAKE_DETECTOR_OUTPUT != PROOF_OF_FABRICATION
+
+CONNECTORS PREVIOUSLY REQUESTED: SpiderFoot, Recon-ng, Amass, Nuclei, Maigret, SearXNG, Wayback Machine, WHOIS/RDAP, DNS, GitHub dorks, Shodan InternetDB, JA4, passive DNS, Shodan, Censys, HIBP (authorization-dependent), Apify, Firecrawl, Exa, Docling, Social Links, ThreatMon, OSINT IQ, MISP, STIX/TAXII, MITRE ATT&CK, YARA, Sigma, OT/ICS telemetry, public datasets, public web/search/archive, public social feeds
+
+CONNECTOR TRUTH: all listed requested/planned; current readiness NOT verified. No mock fixtures disguised as production sources.
+
+REPOSITORY CODE STYLE: Extend existing working code first; minimum files necessary, maximum testable functionality, no stubs, no decorative architecture, no duplicate engines, no fabricated connectors.
+
+ENGINEERING PRIORITIES: Fix P0 runtime, source truth, security, evidence and replay -> Fix P1 integrations, agent routing and product usability -> Qualify representative real sources and workflows -> Expand specialized domains only with gates -> Enterprise ops and independent market benchmarking
+
+FIRST VERTICAL SLICE: Authorized public domain/IP/company objective → collection → evidence → normalization → entity/temporal graph → contradiction verification → reproducible report. Build this before broad novelty.
+
+DOCS: AGENTS.md, README, EXECUTIVE_VERDICT, ENTERPRISE_ASSESSMENT, PROBLEM_STATEMENTS, ARCHITECTURE, FLOW, DATA_MODEL, INTEGRATION_MAP, REPAIR, ACCEPTANCE_GATES, SOURCE_STRATEGY, CHANGE_CONTROL
+
+ACCEPTANCE: Real source connectivity tested with permission and provenance | No fixture/mock promoted as live provider | Reproducible end-to-end objective-to-report golden cases | Unknown/blocked states truthful | Entity merges reversible and explainable | Evidence immutable and replayable | Source pedigree and independence proven | Contradictions found and preserved | LOCAL_ONLY/Ollama actually works | Security IAM/tenant boundaries tested | Deployment/CI/logging/backup health proven | Performance/cost/latency observed | Docs match implementation
+
+MODEL: Ollama/local-first LOCAL_ONLY, optional cloud providers only with explicit privacy-safe routing.
+
+DEPLOYMENT INTENT: Vercel frontend (past user intent), Supabase backend (past user intent), private investigator workspace, Oracle worker removed from prior requested architecture
+
+SAFETY: Never credential use, auth bypass, illicit purchase, unauthorized scanning, malware deployment, covert manipulation, doxxing/precise-person tracking, financial crime or autonomous consequential allegations/actions.
+
+INSTRUCTION TO NEXT CHAT: Read JSON as memory, not truth about live code. Review current main HEAD, docs and tests before engineering work; preserve existing context, all verified-working components and evidence/replay/security; state real blockers honestly.
+
+SOURCE/VERBATIM LIMIT: Prior conversation search failed; this pack cannot claim every historical message. Original retrieved prompt documents included in references subfolder.
+
+ROLE HUMINT: consensual interviews, basis of knowledge, firsthand vs hearsay, source reliability separate from claim credibility, memory/time limits, independent corroboration | DISTINCTIONS source confidence ≠ accuracy, consistent testimony ≠ verified fact, demeanor ≠ lie detector, refusal ≠ guilt | RESTRICTIONS no covert recruitment, coercion, blackmail, deception or identity impersonation, no private interception or sensitive profiling
+
+ROLE FININT: authorized financial records, cash/payment flow, beneficiary vs processor, source-of-funds claims, benign alternatives, deterministic currency/amount arithmetic | DISTINCTIONS invoice ≠ payment, account holder ≠ operator, anomaly ≠ crime, flow ≠ ownership | RESTRICTIONS no unauthorized bank access or fund movement, no money laundering, fraud or sanctions evasion
+
+ROLE TRADEINT: shipper/consignee/buyer/seller roles, HS version, quantities/values, origin vs transit, BOL vs invoice, Incoterms, sanctions/export control context | DISTINCTIONS shipper ≠ manufacturer, consignee ≠ end user, invoice ≠ shipment, route anomaly ≠ evasion | RESTRICTIONS no customs/sanctions/export-control evasion or illicit logistics
+
+ROLE COMPANYINT: legal identity, registrations, directors/officers, share classes, shareholders, beneficial owners, corporate control eras, filing time | DISTINCTIONS director ≠ owner, owner ≠ beneficial owner, shared address ≠ same owner, brand ≠ company | RESTRICTIONS no doxxing directors or hidden ownership evasion design
+
+ROLE ORGINT: formal vs functional reporting, unit/role/person separations, delegated authority, governance, program/project, capacity and dependencies, historical changes | DISTINCTIONS title ≠ authority, role ≠ person, org chart ≠ actual structure | RESTRICTIONS no social engineering or private-employee targeting
+
+ROLE SUPPLYCHAININT: direct/4th/nth-party dependency, SBOM/VEX/PURL, cloud/IdP/CI/CD common failures, criticality/substitution, vendor incidents, supplier alternatives | DISTINCTIONS contract ≠ active use, SBOM ≠ deployed reality, supplier incident ≠ customer compromise, single provider ≠ SPOF | RESTRICTIONS no vendor intrusion, sabotage, malicious packages, or dependency attack prioritization
+
+ROLE FRAUDINT: scam typologies, claimed vs observed fraud, impersonation, payment/complaints, campaign clustering, reversals/refunds and net loss, benign alternatives | DISTINCTIONS complaint ≠ proven fraud, chargeback ≠ fraud, account holder ≠ fraud operator, anomaly ≠ crime | RESTRICTIONS no phishing, scam scripts, laundering, forged documents or fraud-evasion guidance
+
+ROLE BREACHINT: breach claim vs fact, sample/dataset authenticity, lineage/recycled leaks, record counts, first vs third-party origin, data class/impact | DISTINCTIONS email in leak ≠ company breached, sample ≠ full dataset, new listing ≠ new breach | RESTRICTIONS no illicit purchase, full stolen-data acquisition, or reuse of exposed secrets
+
+ROLE CREDINT: exposed passwords/hashes, session tokens/keys/MFA secrets, stealer/combo source, account relevance, rotation/revocation, privacy-preserving fingerprinting | DISTINCTIONS exposed ≠ valid ≠ compromised, password reset ≠ sessions revoked, stealer log ≠ website breach | RESTRICTIONS never test or use passwords, keys, cookies, refresh tokens, recovery codes, or log in
+
+ROLE VULNINT: CVE/CWE/CPE/PURL, vendor fixed/affected versions, CVSS/EPSS/KEV, backports, VEX/SBOM, asset applicability, defensive priority | DISTINCTIONS severity ≠ exploitability, exposure ≠ exploitation, component presence ≠ reachability | RESTRICTIONS no exploit execution or target-specific weaponization
+
+ROLE MALWAREINT: safe sample/report analysis, static vs dynamic observations, family/variant resolution, IOC freshness, C2 claims, ATT&CK evidence mapping | DISTINCTIONS static clue ≠ executed behavior, sample ≠ family, family ≠ actor, embedded IOC ≠ contacted IOC | RESTRICTIONS no malware development, execution on host, evasion optimization or live C2 tasking
+
+ROLE CTI: threat intelligence PIR, TTPs/ATT&CK versioning, indicators and sightings, actor-label caution, STIX/TAXII/MISP | DISTINCTIONS campaign ≠ actor, malware family ≠ real-world operator, threat reports may share upstream source | RESTRICTIONS no malware deployment or intrusive threat-actor interaction
+
+ROLE NETINT: passive infrastructure and authorized network telemetry, IP/ASN/BGP/cloud relationships, temporal routing, NAT/CDN context | DISTINCTIONS allocated_to ≠ owned_by, open port ≠ exploit, RPKI invalid ≠ hijack | RESTRICTIONS no unauthorized active scans, interception, route manipulation or exploitation
+
+ROLE DOMAININT: RDAP/registrar/registry, domain control eras, historical DNS, associated companies, brands and typosquatting context | DISTINCTIONS registrar ≠ registrant, domain age ≠ benignity, historic owner ≠ current owner | RESTRICTIONS no domain takeover, unauthorized enumeration, registrar modification
+
+ROLE DNSINT: A/AAAA/CNAME/MX/NS/TXT/SOA/SRV/CAA/PTR, pDNS, authoritative DNS, history, CDN/wildcard, DNSSEC and time | DISTINCTIONS pDNS first_seen ≠ creation, shared NS ≠ common owner, CDN edge ≠ origin | RESTRICTIONS no poisoning, unauthorized AXFR, DNS abuse
+
+ROLE IPINT: RIR/RDAP/ASN/BGP, IP usage eras, cloud/CDN sharing, reputation freshness, passive service evidence | DISTINCTIONS IP allocation ≠ tenant, IP geolocation ≠ exact person, old malicious reputation ≠ current maliciousness | RESTRICTIONS no unauthorized scans, brute-force, traffic interception
+
+ROLE ACADEMICINT: public scholarly metadata, papers/research groups, institutions/grants/citations, preprint vs peer review, retractions/corrections, source/author and topical relevance | DISTINCTIONS citation count ≠ research quality, preprint ≠ peer-reviewed, coauthor ≠ personal affiliation, affiliation ≠ ownership | RESTRICTIONS no paywall/access bypass, plagiarism, fabrication, unauthorized private researcher profiling
+
+ROLE DECEPTIONINT: source-claim consistency, provenance/cross-source contradictions, document/media manipulation signals, context and narrative framing, alternative explanations | DISTINCTIONS inconsistency ≠ deliberate lie, tone ≠ deceit, manipulation indicator ≠ actor attribution | RESTRICTIONS no lie detection based on face/voice/emotion, no psychological manipulation tactics or political targeting
+
+
+
+PASTE INTO NEW CHAT:
+
+Use this attached TraceAtlas memory pack to continue prior OSINT-tool work. Keep core architecture, user intent, safety and evidence requirements. Reconcile plans with current repository reality. Never invent implementation/verification status.
