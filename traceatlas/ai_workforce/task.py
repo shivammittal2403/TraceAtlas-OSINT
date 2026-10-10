@@ -81,6 +81,10 @@ class Task:
             problems.append("task declares no required_skills")
         if not self.authorization.valid:
             problems.append("task authorization invalid/expired")
+        if self.authorization.case_id and self.authorization.case_id != self.case_id:
+            problems.append("task authorization belongs to another case")
+        if "case_id" in self.inputs and self.inputs["case_id"] != self.case_id:
+            problems.append("task inputs belong to another case")
         if not self.evidence_requirements:
             problems.append("task declares no evidence_requirements")
         return problems

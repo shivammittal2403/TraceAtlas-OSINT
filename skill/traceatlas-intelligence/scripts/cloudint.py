@@ -1368,13 +1368,13 @@ class CloudInt:
                 FindingType.CSPM_STALE,
             }),
             RiskDimension.VULNERABILITY_RISK.value: max_state({FindingType.VULNERABILITY_CONTEXT}),
-            RiskDimension.SECRET_RISK.value: "UNKNOWN_NO_SECRET_EXPOSURE_EVIDENCE_IN_DEMO",
+            RiskDimension.SECRET_RISK.value: "UNKNOWN_NO_SECRET_EXPOSURE_EVIDENCE",
             RiskDimension.LOGGING_GAP.value: max_state({FindingType.LOGGING_GAP}),
             RiskDimension.BACKUP_RISK.value: max_state({FindingType.BACKUP_RISK}),
             RiskDimension.RESILIENCE_RISK.value: "UNKNOWN_RESTORE_TEST_UNAVAILABLE",
             RiskDimension.SUPPLY_CHAIN_RISK.value: max_state({FindingType.SUPPLY_CHAIN_CONTEXT}),
             RiskDimension.INCIDENT_RISK.value: max_state({FindingType.INCIDENT_SIGNAL, FindingType.BREACH_CONTEXT}),
-            RiskDimension.EVIDENCE_CONFIDENCE.value: "MEDIUM_PASSIVE_AUTHORIZED_CORPUS",
+            RiskDimension.EVIDENCE_CONFIDENCE.value: "AVAILABLE_UNQUALIFIED" if self.sources and self.evidence else "UNKNOWN_NO_EVIDENCE",
         }
 
     # -----------------------------------------------------------------
@@ -1447,14 +1447,18 @@ class CloudInt:
                 ))
                 existing.add(desc)
 
-        if not any(ev.data_plane for ev in self.audit_events.values()):
-            desc = "No data-plane storage access logs are present in the authorized corpus."
+        for res in self.resources.values():
+            if res.resource_type != "OBJECT_STORAGE":
+                continue
+            if any(ev.data_plane and ev.resource_id == res.id for ev in self.audit_events.values()):
+                continue
+            desc = f"No data-plane storage access logs for resource {res.id} are present in the authorized corpus."
             if desc not in existing:
                 self.gaps.append(KnowledgeGap(
                     id=new_id("GAP-DPLOG-", desc),
                     gap_type=GapType.LOGGING_COVERAGE_MISSING,
                     description=desc,
-                    about_resource_ids=list(self.resources.keys()),
+                    about_resource_ids=[res.id],
                     importance="HIGH",
                     recommended_source="Authorized storage data-plane access logs / object-level audit logs",
                     specialist="LOGINT / CLOUDINT",
@@ -1463,192 +1467,53 @@ class CloudInt:
                 existing.add(desc)
 
     def build_next_actions(self) -> None:
-        self.actions = [
-            NextAction(
-                id="ACT-NATIVE-CFG-HISTORY",
-                description="Retrieve native configuration history for the relevant incident window; do not use current config for historical conclusions.",
-                priority=1,
-                privacy_impact="LOW_IF_AUTHORIZED",
-                expected_gain=0.90,
-                specialist="CLOUDINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-DATA-PLANE-LOGS",
-                description="Request authorized storage data-plane/object access logs to determine whether anonymous or unauthorized reads occurred.",
-                priority=2,
-                privacy_impact="MEDIUM_IF_AUTHORIZED",
-                expected_gain=0.90,
-                specialist="LOGINT / CLOUDINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-DATA-CLASSIFICATION",
-                description="Resolve authorized data classification metadata for affected storage; do not inspect private object content unnecessarily.",
-                priority=3,
-                privacy_impact="MEDIUM_IF_AUTHORIZED",
-                expected_gain=0.85,
-                specialist="DATAINT / DLP",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-IAM-EFFECTIVE",
-                description="Evaluate IAM effective permissions deterministically using provider-aware policy evaluator, including conditions, boundaries, resource policies, and session context.",
-                priority=4,
-                privacy_impact="LOW",
-                expected_gain=0.85,
-                specialist="IAMINT / CLOUDINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-CHANGE-TICKET",
-                description="Review change ticket/approval for public-access configuration to distinguish intentional public service from unintended exposure.",
-                priority=5,
-                privacy_impact="LOW",
-                expected_gain=0.75,
-                specialist="CHANGE_MGMT / CLOUDINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-ENABLE-LOGGING",
-                description="Recommend enabling storage access logging and flow/log retention through authorized change workflow.",
-                priority=6,
-                privacy_impact="LOW_IF_AUTHORIZED",
-                expected_gain=0.80,
-                specialist="CLOUDSEC / LOGINT",
-                requires_human_approval=True,
-            ),
-            NextAction(
-                id="ACT-VULN-HANDOFF",
-                description="Hand off vulnerability findings to VULNINT for applicability, reachability, and mitigation validation.",
-                priority=7,
-                privacy_impact="LOW",
-                expected_gain=0.70,
-                specialist="VULNINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-INCIDENT-HANDOFF",
-                description="If unauthorized access evidence emerges, hand off to INCIDENTINT/LOGINT for reconstruction; CLOUDINT does not declare breach from configuration alone.",
-                priority=8,
-                privacy_impact="LOW",
-                expected_gain=0.75,
-                specialist="INCIDENTINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-HUMAN-REVIEW",
-                description="Require human review before any production configuration change, IAM remediation, logging change, credential rotation, or public attribution.",
-                priority=9,
-                privacy_impact="PROTECTIVE",
-                expected_gain=0.80,
-                specialist=None,
-                requires_human_approval=True,
-            ),
-            NextAction(
-                id="ACT-NO-CLOUD-ABUSE",
-                description="Do not use/test cloud keys, assume roles, access buckets, download private objects, exploit metadata/SSRF, modify IAM, delete logs, or cross tenant boundaries.",
-                priority=99,
-                privacy_impact="PROTECTIVE",
-                expected_gain=0.0,
-                specialist=None,
-                requires_human_approval=False,
-            ),
-        ]
+        self.actions = []
+        if not (self.resources or self.evidence or self.findings or self.identities):
+            self.actions.append(NextAction(
+                id="ACT-CONFIGURE-EVIDENCE",description="Supply an authorized local corpus before assigning specialist analysis.",
+                priority=1,privacy_impact="LOW_IF_AUTHORIZED",expected_gain=0.95,specialist="CLOUDINT",requires_human_approval=False))
+            return
+        for index,gap in enumerate(self.gaps,1):
+            self.actions.append(NextAction(
+                id=new_id("ACT-GAP-",gap.id),description=f"Review {gap.recommended_source or 'authorized source records'} to resolve: {gap.description}",
+                priority=index,privacy_impact="LOW_IF_AUTHORIZED",expected_gain=gap.expected_information_value,
+                specialist=gap.specialist,requires_human_approval=False))
 
     def build_recommendations(self) -> None:
-        self.recommendations = [
-            Recommendation(
-                id="REC-REVIEW-DATA-LOGS",
+        self.recommendations = []
+        for finding in self.findings.values():
+            known_evidence = [eid for eid in finding.evidence_ids if eid in self.evidence]
+            self.recommendations.append(Recommendation(
+                id=new_id("REC-REVIEW-", finding.id),
                 category="ANALYSIS",
-                action="Review authorized data-plane access logs and object classification before concluding exposure or breach.",
-                target="STG-777",
-                rationale="Public-access configuration candidate exists, but sensitive data exposure and breach are not established.",
-                finding_ids=["F-PUBCFG-STG", "F-DATAEXP-STG", "F-LOGGING-STG"],
-                evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE", "EV-AUDIT-CONFIG-CHANGE"],
+                action="Review the supplied finding, source lineage and applicable configuration history before choosing any operational change.",
+                target=finding.subject_id,
+                rationale=f"Supplied finding {finding.id} has local verification state {finding.verification_state.value}; independent verification remains required.",
+                finding_ids=[finding.id],
+                evidence_ids=known_evidence,
                 approval=RecommendationApproval.AUTONOMOUS_ANALYTIC,
-                business_impact="LOW",
+                business_impact="Analytical review only.",
                 reversibility="N/A",
-                limitations=["Do not list/download objects outside authorized workflow."],
-            ),
-            Recommendation(
-                id="REC-RESTRICT-PUBLIC",
-                category="REMEDIATION",
-                action="If public access is unintended, restrict storage public access through approved change management.",
-                target="STG-777",
-                rationale="Historical native configuration indicated public-read capability during the reviewed window.",
-                finding_ids=["F-PUBCFG-STG", "F-MISCONFIG-STG"],
-                evidence_ids=["EV-NATIVE-CFG-PUBLIC"],
-                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
-                business_impact="May break intentional public workloads; requires owner validation.",
-                reversibility="Usually reversible, but validate dependencies.",
-                limitations=["CLOUDINT recommends only; authorized operators execute."],
-            ),
-            Recommendation(
-                id="REC-ENABLE-LOGGING",
-                category="CONTROL",
-                action="Enable storage access logging and ensure retention covers investigation window.",
-                target="STG-777",
-                rationale="Logging gap prevents confirmation or exclusion of object-level access.",
-                finding_ids=["F-LOGGING-STG"],
-                evidence_ids=["EV-NATIVE-CFG-PUBLIC", "EV-NATIVE-CFG-PRIVATE"],
-                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
-                business_impact="May increase storage/logging cost.",
-                reversibility="Logging can be disabled later, but retention decisions matter.",
-                limitations=["Do not delete or disable existing logs."],
-            ),
-            Recommendation(
-                id="REC-IAM-LEASE",
-                category="IAM_REMEDIATION",
-                action="Review effective IAM permissions and reduce broad wildcard permissions where business need is not demonstrated.",
-                target="ROLE-BROAD, SP-ANALYTICS",
-                rationale="IAM policy observations exist, but effective access and privilege require deterministic policy evaluation.",
-                finding_ids=["F-IAM-SP", "F-PRIV-ROLEBROAD"],
-                evidence_ids=["EV-IAM-EXPORT"],
-                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
-                business_impact="May disrupt automation or legitimate services.",
-                reversibility="Requires rollback plan.",
-                limitations=["Do not provide privilege-escalation instructions.", "Do not assume roles for validation."],
-            ),
-            Recommendation(
-                id="REC-SECRET-HANDOFF",
-                category="HANDOFF",
-                action="If any cloud credential/key/token exposure is identified, hand off to CREDINT and rotate through authorized workflow; CLOUDINT must not test credentials.",
-                target="Any exposed cloud secret",
-                rationale="Credential exposure handling is outside CLOUDINT defensive analysis boundary.",
-                finding_ids=[],
-                evidence_ids=[],
-                approval=RecommendationApproval.HUMAN_APPROVAL_REQUIRED,
-                business_impact="Rotation may require service coordination.",
-                reversibility="Managed through secret rotation workflow.",
-                limitations=["Do not use, test, or redeem credentials."],
-            ),
-            Recommendation(
-                id="REC-BACKUP-TEST",
-                category="RESILIENCE",
-                action="Validate backup restorability through authorized restore test; backup existence alone is insufficient.",
-                target="STG-777 / associated backups",
-                rationale="Backup context exists but restore-test evidence is unavailable.",
-                finding_ids=["F-BACKUP-STG"],
-                evidence_ids=["EV-NATIVE-INV"],
-                approval=RecommendationApproval.OPERATIONAL_CHANGE_APPROVAL_REQUIRED,
-                business_impact="Restore test may consume resources; schedule carefully.",
-                reversibility="Test restore should be isolated.",
-                limitations=["Do not perform destructive restoration autonomously."],
-            ),
-        ]
+                limitations=["This recommendation does not establish exposure, breach or effective permissions.",
+                             "Operational remediation requires owner review and approved change management."]
+                + (["Some referenced evidence was not supplied."] if len(known_evidence)!=len(finding.evidence_ids) else []),
+            ))
 
     def build_handoffs(self) -> None:
-        self.handoffs = [
-            {"specialist": "CREDINT", "reason": "Exposed cloud key/token/secret handling; CLOUDINT must not test or use credentials."},
-            {"specialist": "VULNINT", "reason": "CVE applicability, reachability, exploitability, and remediation validation."},
-            {"specialist": "INCIDENTINT / LOGINT", "reason": "Cloud incident reconstruction and log correlation if unauthorized access evidence emerges."},
-            {"specialist": "BREACHINT", "reason": "Breach context and exposure intelligence if disclosure is supported."},
-            {"specialist": "SUPPLYCHAININT", "reason": "Third-party/cloud dependency resilience and vendor risk."},
-            {"specialist": "NETINT / DNSINT / CERTINT", "reason": "Deeper internet-facing infrastructure, DNS history, and certificate context."},
-            {"specialist": "ORGINT / CORPINT", "reason": "Business/technical ownership and organizational responsibility."},
-            {"specialist": "CTI / THREATACTORINT", "reason": "Threat actor/campaign context only with independent evidence; cloud TTP/API event alone is not attribution."},
-        ]
+        self.handoffs = []
+        if not (self.resources or self.evidence or self.findings or self.identities):
+            return
+        seen = set()
+        for item in list(self.findings.values()) + self.gaps:
+            specialist = getattr(item,"specialist_handoff",None) or getattr(item,"specialist",None)
+            if not specialist:
+                continue
+            reason = getattr(item,"description",None) or getattr(item,"statement",None) or getattr(item,"title",None)
+            key = (specialist,reason)
+            if key in seen:
+                continue
+            seen.add(key)
+            self.handoffs.append({"specialist":specialist,"reason":reason,"basis_id":item.id,"status":"PROPOSED_FROM_LOCAL_ANALYSIS"})
 
     # -----------------------------------------------------------------
     # Dual AI review / summary
@@ -1686,22 +1551,24 @@ class CloudInt:
         if any(f.finding_type == FindingType.VULNERABILITY_CONTEXT for f in self.findings.values()):
             issues.append("Vulnerability applicability requires VULNINT handoff; CVE presence is not exploitation.")
 
-        if not issues:
-            verdict = "AGREE"
+        if not self.evidence:
+            verdict = "INSUFFICIENT_EVIDENCE"
+        elif not issues:
+            verdict = "DETERMINISTIC_CHECKLIST_COMPLETE"
         elif len(issues) <= 5:
-            verdict = "PARTIAL_AGREEMENT"
+            verdict = "CHECKLIST_ISSUES_IDENTIFIED"
         else:
             verdict = "INSUFFICIENT_EVIDENCE"
 
         return {
             "primary_cloud_analyst": (
-                "Authorized native configuration shows storage public-read capability during the historical window, "
-                "later changed to private. CSPM reporting public access at current retrieval is stale/dependent. "
-                "Public endpoint candidate exists for load-balanced service, but service listening and anonymous data access are not established. "
-                "IAM policy observations exist, but effective permissions remain unresolved."
+                f"Supplied corpus contains {len(self.resources)} resources, {len(self.evidence)} evidence records "
+                f"and {len(self.findings)} findings. This is a deterministic checklist of local analysis."
             ),
             "independent_cloud_skeptic_issues": issues,
             "verdict": verdict,
+            "review_mode": "DETERMINISTIC_CHECKLIST",
+            "independent_review_performed": False,
             "adversarial_checks": [
                 "Are provider and tenant confused? No; provider-native tenant/account/resource IDs preserved.",
                 "Is resource name treated as identity? No; resource ID anchors used.",
@@ -1712,47 +1579,26 @@ class CloudInt:
                 "Is current configuration used for historical event? No; temporal config eras used.",
                 "Was any credential/bucket/metadata/IAM action performed? No.",
             ],
-            "note": "AI agreement is analytical agreement, not independent cloud source corroboration.",
+            "note": "Deterministic checklist only; no independent AI review or source corroboration was performed.",
         }
 
     def analyst_summary(self, dual: Dict[str, Any]) -> str:
-        stg = self.resources.get("STG-777")
-        vm = self.resources.get("VM-01")
-        lb = self.resources.get("LB-01")
-
-        lines = [
-            "CLOUD PROVIDER: aws-like synthetic provider; tenant/account/project resolved from authorized inventory.",
-            "TENANT / ACCOUNT / PROJECT: T-ACME / A-123456789012 / P-payments.",
-            "RESOURCE INVENTORY:",
-            f"- STG-777: {stg.name if stg else 'unknown'} ({stg.resource_type if stg else 'ObjectStorage'}) in {stg.region if stg else 'us-east-1'}.",
-            f"- VM-01: {vm.name if vm else 'unknown'} ({vm.resource_type if vm else 'ComputeInstance'}).",
-            f"- LB-01: {lb.name if lb else 'unknown'} ({lb.resource_type if lb else 'LoadBalancer'}).",
-            "",
-            "CURRENT VS HISTORICAL STATE:",
-            "- Storage public-read configuration was supported during 2026-09-01 to 2026-10-01.",
-            "- Native configuration changed to private at 2026-10-01.",
-            "- CSPM finding retrieved 2026-10-08 still reported public access; treated as stale/dependent.",
-            "",
-            "EXPOSURE:",
-            "- PUBLIC_ACCESS_CONFIGURATION_CANDIDATE: supported for historical window.",
-            "- SENSITIVE_DATA_EXPOSURE: inconclusive; no data-plane successful anonymous read and no verified classification.",
-            "- PUBLIC_ENDPOINT_CANDIDATE: load balancer/public IP/DNS observed; service listening not confirmed.",
-            "- BREACH: not established.",
-            "",
-            "IAM:",
-            "- IAM policy observations exist for read-only service principal and broad role.",
-            "- Effective permissions remain candidate-only due unresolved conditions/boundaries/session context.",
-            "- Privileged identity is candidate-only; role name and wildcard are not sufficient.",
-            "",
-            "LOGGING / BACKUP / VULN:",
-            "- Storage access logging gap supported.",
-            "- Backup restorability unknown.",
-            "- Vulnerability context requires VULNINT handoff.",
-            "",
-            f"DUAL-AI REVIEW: {dual['verdict']}.",
-            "PRIVACY/POLICY: Defensive authorized cloud intelligence only. No credential use/testing, role assumption, bucket access, private object download, metadata/SSRF exploitation, IAM modification, log deletion, cross-tenant access, or active probing.",
-            "NEXT ACTION: Retrieve authorized data-plane logs and classification metadata; review change ticket; evaluate IAM effectively with deterministic policy evaluator; remediate only through approved workflow.",
-        ]
+        lines = [f"CASE: {self.case.case_id}",
+                 f"SUPPLIED CORPUS: {len(self.sources)} sources, {len(self.evidence)} evidence records, {len(self.resources)} resources.",
+                 "RESOURCE INVENTORY:"]
+        for resource in self.resources.values():
+            lines.append(f"- {resource.id}: {resource.name or 'unnamed'}; provider={resource.provider}; tenant={resource.tenant_id}; account={resource.account_id}; region={resource.region or 'unknown'}.")
+        if not self.resources:
+            lines.append("- No resource inventory supplied.")
+        lines.append("SUPPLIED FINDINGS:")
+        for finding in self.findings.values():
+            lines.append(f"- {finding.id}: {finding.statement}; local state={finding.verification_state.value}.")
+        if not self.findings:
+            lines.append("- No finding records supplied.")
+        lines.extend([f"OPEN CONTRADICTIONS: {len(self.contradictions)}.",
+                      f"DETERMINISTIC CHECKLIST: {dual['verdict']}.",
+                      "No model-based independent review or live cloud collection was performed.",
+                      "Local findings require evidence qualification and canonical Fact Gate review."])
         return "\n".join(lines)
 
     # -----------------------------------------------------------------
@@ -2880,6 +2726,44 @@ def build_exposure_payload(c: CloudInt) -> Dict[str, Any]:
     }
 
 
+def build_recorded_config_drift(c: CloudInt) -> List[Dict[str, Any]]:
+    groups = defaultdict(list)
+    for snapshot in c.config_snapshots.values():
+        time = parse_dt(snapshot.valid_from)
+        if time is not None and time.tzinfo is not None:
+            groups[(snapshot.resource_id,snapshot.config_type)].append((time,snapshot))
+    changes = []
+    for snapshots in groups.values():
+        snapshots.sort(key=lambda pair:pair[0])
+        for (before_time,before),(after_time,after) in zip(snapshots,snapshots[1:]):
+            if after_time<=before_time or before.attributes==after.attributes:
+                continue
+            changes.append({"resource_id":after.resource_id,"from":before.attributes,"to":after.attributes,
+                            "effective_at":after.valid_from,"snapshot_ids":[before.id,after.id],
+                            "source_ids":[sid for sid in (before.source_id,after.source_id) if sid in c.sources],
+                            "evidence_ids":[eid for eid in (before.evidence_id,after.evidence_id) if eid in c.evidence],
+                            "limitations":["Snapshot differences do not independently prove the exact operational change time."]})
+    return changes
+
+
+def build_recorded_cloud_timeline(c: CloudInt) -> List[Dict[str, Any]]:
+    events = []
+    for snapshot in c.config_snapshots.values():
+        time = snapshot.valid_from or snapshot.observed_at
+        if time:
+            events.append({"time":time,"event":"Supplied configuration snapshot", "resource_id":snapshot.resource_id,
+                           "snapshot_id":snapshot.id,"source_ids":[snapshot.source_id] if snapshot.source_id in c.sources else []})
+    for event in c.audit_events.values():
+        if event.event_time:
+            events.append({"time":event.event_time,"event":event.event_name,"audit_event_id":event.id,
+                           "source_ids":[sid for sid in event.source_ids if sid in c.sources]})
+    for finding in c.cspm_findings.values():
+        if finding.effective_at:
+            events.append({"time":finding.effective_at,"event":"Supplied CSPM finding", "finding_id":finding.id,
+                           "source_ids":[finding.source_id] if finding.source_id in c.sources else []})
+    return events
+
+
 def build_result(c: CloudInt, status: Status) -> Dict[str, Any]:
     dual = c.dual_ai_review()
     summary = c.analyst_summary(dual)
@@ -2996,26 +2880,14 @@ def build_result(c: CloudInt, status: Status) -> Dict[str, Any]:
         "audit_events": list(c.audit_events.values()),
         "flow_logs": list(c.flow_events.values()),
         "configurations": build_config_history_payload(c),
-        "config_drift": [
-            {
-                "resource_id": "STG-777",
-                "from": "public_read=true",
-                "to": "public_read=false",
-                "changed_at": "2026-10-01T00:00:00Z",
-                "source": "native configuration history + audit event",
-            }
-        ],
+        "config_drift": build_recorded_config_drift(c),
         "cspm_findings": list(c.cspm_findings.values()),
         "benchmark_context": [],
         "exceptions": [],
         "encryption_context": [f for f in c.findings.values() if f.finding_type == FindingType.ENCRYPTION_CONTEXT],
         "backup_context": [f for f in c.findings.values() if f.finding_type == FindingType.BACKUP_RISK],
         "data_classification": {rid: r.data_classification_candidate for rid, r in c.resources.items()},
-        "data_residency": {
-            "STG-777": "primary_region_us_east_1_replication_unknown",
-            "VM-01": "primary_region_us_east_1",
-            "LB-01": "regional_load_balancer",
-        },
+        "data_residency": {rid: {"observed_region":resource.region,"replication_state":"UNKNOWN"} for rid,resource in c.resources.items()},
         "external_exposure": build_exposure_payload(c),
         "vulnerability_context": [f for f in c.findings.values() if f.finding_type == FindingType.VULNERABILITY_CONTEXT],
         "incident_context": [f for f in c.findings.values() if f.finding_type in {FindingType.INCIDENT_SIGNAL, FindingType.BREACH_CONTEXT}],
@@ -3023,28 +2895,7 @@ def build_result(c: CloudInt, status: Status) -> Dict[str, Any]:
         "supply_chain_context": [],
         "shared_responsibility": [f for f in c.findings.values() if f.finding_type == FindingType.SHARED_RESPONSIBILITY_CONTEXT],
         "cost_context": [f for f in c.findings.values() if f.finding_type == FindingType.COST_ANOMALY_CONTEXT],
-        "timeline_updates": [
-            {
-                "time": "2026-09-01T00:00:00Z",
-                "event": "Storage public-read configuration era begins.",
-                "source_ids": ["SRC-NATIVE-CFG"],
-            },
-            {
-                "time": "2026-09-20T00:00:00Z",
-                "event": "CSPM effective time for public-read finding.",
-                "source_ids": ["SRC-CSPM"],
-            },
-            {
-                "time": "2026-10-01T00:00:00Z",
-                "event": "Storage configuration changes to private/block public access.",
-                "source_ids": ["SRC-NATIVE-CFG", "SRC-AUDIT"],
-            },
-            {
-                "time": "2026-10-08T00:25:00Z",
-                "event": "CSPM retrieved still reports public; stale/contradiction detected.",
-                "source_ids": ["SRC-CSPM"],
-            },
-        ],
+        "timeline_updates": build_recorded_cloud_timeline(c),
         "observations": list(c.evidence.values()),
         "candidate_facts": list(c.findings.values()),
         "supported_facts": supported_facts,
@@ -3096,14 +2947,12 @@ def build_result(c: CloudInt, status: Status) -> Dict[str, Any]:
         ],
         "knowledge_gaps": c.gaps,
         "recommended_next_actions": c.actions,
+        "recommendations": c.recommendations,
         "specialist_handoffs": c.handoffs,
-        "limitations": [
-            "Local synthetic demo; no live cloud API access.",
+        "limitations": ["Synthetic sample corpus." if c.case.sample else "Provided local corpus; no live cloud API access.",
             "Passive-first; no active probing or credential testing.",
-            "Defensive recommendations only; operational changes require human approval.",
-            "CSPM/SIEM derivatives are not independent corroboration of native configuration.",
-            "Historical configuration must be used for historical incident analysis.",
-        ] + c.validation_errors,
+            "Operational changes require human approval.",
+            "Native findings are local analysis, not canonical verified facts."] + c.validation_errors,
         "analyst_summary": summary,
         "dual_ai_review": dual,
         "replay_manifest": replay_manifest,
@@ -3162,7 +3011,7 @@ def run_unconfigured_pipeline(case: Case) -> Dict[str, Any]:
             "No IAM/exposure conclusion possible.",
         ],
         "verdict": "INSUFFICIENT_EVIDENCE",
-        "note": "AI agreement is not independent cloud source corroboration.",
+        "note": "No independent AI review was performed.",
     }
 
     summary = (
@@ -3173,6 +3022,7 @@ def run_unconfigured_pipeline(case: Case) -> Dict[str, Any]:
 
     result = build_result(c, Status.BLOCKED_CONFIGURATION)
     result["analyst_summary"] = summary
+    dual.update(review_mode="DETERMINISTIC_CHECKLIST", independent_review_performed=False)
     result["dual_ai_review"] = dual
     return result
 

@@ -11,11 +11,13 @@ import dataclasses
 from datetime import datetime
 from enum import Enum
 import importlib.util
+import inspect
 import json
+import math
 from pathlib import Path
 import sys
 import types
-from typing import get_args, get_origin, get_type_hints, Union
+from typing import Any, get_args, get_origin, get_type_hints, Union
 
 MODULES = (
     'academicint', 'acoustint', 'adsbint', 'aiint', 'aisint', 'anomalyint',
@@ -61,6 +63,51 @@ def jsonable(value):
     raise TypeError('Unsupported result type: ' + type(value).__name__)
 
 
+def decode_value(value, hint):
+    """Validate JSON values before constructing native typed records."""
+    origin = get_origin(hint)
+    if origin in (Union,types.UnionType):
+        for alternative in get_args(hint):
+            try:
+                return decode_value(value,alternative)
+            except (ValueError,TypeError):
+                pass
+        raise ValueError('Value does not match any permitted field type')
+    if hint in (Any,object):
+        return value
+    if hint is type(None):
+        if value is not None:
+            raise ValueError('Expected null')
+        return None
+    if isinstance(hint,type) and issubclass(hint,Enum):
+        return hint(value)
+    if dataclasses.is_dataclass(hint):
+        return decode_record(hint,value)
+    if origin is list:
+        if not isinstance(value,list):
+            raise ValueError('Expected a JSON array')
+        return [decode_value(item,get_args(hint)[0]) for item in value]
+    if origin is dict:
+        if not isinstance(value,dict):
+            raise ValueError('Expected a JSON object')
+        key_type,value_type = get_args(hint)
+        return {decode_value(key,key_type):decode_value(item,value_type) for key,item in value.items()}
+    if hint is str and not isinstance(value,str):
+        raise ValueError('Expected a JSON string')
+    if hint is bool and type(value) is not bool:
+        raise ValueError('Expected a JSON boolean')
+    if hint is int and type(value) is not int:
+        raise ValueError('Expected a JSON integer')
+    if hint is float:
+        try:
+            finite = type(value) in (int,float) and math.isfinite(value)
+        except OverflowError:
+            finite = False
+        if not finite:
+            raise ValueError('Expected a finite JSON number')
+    return value
+
+
 def decode_record(cls, data):
     if not isinstance(data, dict):
         raise ValueError(cls.__name__ + ' record must be a JSON object')
@@ -69,25 +116,10 @@ def decode_record(cls, data):
     if unknown:
         raise ValueError(cls.__name__ + ' unknown fields: ' + ', '.join(sorted(unknown)))
     hints = get_type_hints(cls)
-    def convert(value, hint):
-        origin = get_origin(hint)
-        if origin in (Union,types.UnionType):
-            if value is None and type(None) in get_args(hint):
-                return None
-            hint = next((t for t in get_args(hint) if t is not type(None)), object)
-            return convert(value,hint)
-        if isinstance(hint,type) and issubclass(hint,Enum):
-            return hint(value)
-        if dataclasses.is_dataclass(hint):
-            return decode_record(hint,value)
-        if origin is list:
-            if not isinstance(value,list):
-                raise ValueError('Expected a JSON array')
-            return [convert(v,get_args(hint)[0]) for v in value]
-        if hint is bool and not isinstance(value,bool):
-            raise ValueError('Expected a JSON boolean')
-        return value
-    return cls(**{k:convert(v,hints.get(k,object)) for k,v in data.items()})
+    values={key:decode_value(value,hints.get(key,Any)) for key,value in data.items()}
+    if 'id' in values and isinstance(values['id'],str) and not values['id'].strip():
+        raise ValueError(cls.__name__ + ' id must not be empty')
+    return cls(**values)
 
 
 def validate_manifest(manifest):
@@ -155,7 +187,13 @@ def _native(domain, module, manifest):
             time_range=manifest.get('time_range',{}))
         return module.AviationCyberInt().analyze(request)
     if domain in ('cloudint','codeint'):
-        case_data = dict(manifest.get('case',{}))
+        supplied_case = manifest.get('case',{})
+        collections = manifest.get('records',{})
+        if not isinstance(supplied_case,dict):
+            raise ValueError('case must be a JSON object')
+        if not isinstance(collections,dict):
+            raise ValueError('records must be a JSON object')
+        case_data = dict(supplied_case)
         case_data.update(case_id=manifest['case_id'], task_id=manifest['task_id'],
                          objective=manifest['objective'], authorization=manifest['authorization']['basis'],sample=False)
         case = decode_record(module.Case,case_data)
@@ -163,18 +201,25 @@ def _native(domain, module, manifest):
         if violations:
             return module.blocked_policy_result(case,violations)
         analyst = module.CloudInt(case) if domain=='cloudint' else module.CodeInt(case)
-        for collection,records in manifest.get('records',{}).items():
+        ingested_count = 0
+        for collection,records in collections.items():
+            if not isinstance(collection,str):
+                raise ValueError('Record collection name must be a string')
             method = getattr(analyst,'add_'+collection,None)
             if not callable(method):
                 raise ValueError('Unsupported record collection: ' + collection)
-            hint = list(get_type_hints(method).values())[0]
+            parameter = next(iter(inspect.signature(method).parameters))
+            hint = get_type_hints(method)[parameter]
             if not isinstance(records,list):
                 raise ValueError('Record collection must be an array')
             for record in records:
-                method(decode_record(hint,record) if dataclasses.is_dataclass(hint) else record)
+                method(decode_value(record,hint))
+                ingested_count += 1
         analyst.prepare()
         # Preserve the actual typed state; no synthetic sample replacement or AI-review claim.
-        return {key:jsonable(value) for key,value in vars(analyst).items() if not key.startswith('_')}
+        return {'status':'ANALYZED_LOCAL' if ingested_count else 'INSUFFICIENT_DATA',
+                'ingested_record_count':ingested_count,
+                **{key:jsonable(value) for key,value in vars(analyst).items() if not key.startswith('_')}}
     files = {'audint':'analyze_audio_file','aviint':'analyze_av_file',
              'breachint':'analyze_breach_file','comint':'analyze_communication_file',
              'companyint':'analyze_corporate_file'}
@@ -196,8 +241,10 @@ def _native(domain, module, manifest):
 
 
 def run(domain, manifest):
-    domain = ALIASES.get(domain.lower(),domain.lower())
     try:
+        if not isinstance(domain,str):
+            raise ValueError('Skill name must be a string')
+        domain = ALIASES.get(domain.lower(),domain.lower())
         validate_manifest(manifest)
         module = load_module(domain)
         native = _native(domain,module,manifest)

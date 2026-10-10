@@ -24,22 +24,25 @@ SENSITIVE_KEY = re.compile(r"(?i)^(?:password|passwd|pwd|token|access_token|refr
 
 
 def redact_text(text):
+    def plain(value):
+        value = re.sub(r'-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----',
+                       '[REDACTED_PRIVATE_KEY]', value, flags=re.S | re.I)
+        return re.sub(r'''(?ix)(["']?\b(?:password|passwd|pwd|token|access_token|refresh_token|api[_-]?key|secret)\b["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,;<>]+)''',
+                      r'\1"[REDACTED]"', value)
+
     def clean(value):
         if isinstance(value, dict):
             return {key: '[REDACTED]' if SENSITIVE_KEY.fullmatch(str(key)) else clean(val)
                     for key, val in value.items()}
         if isinstance(value, list):
             return [clean(val) for val in value]
+        if isinstance(value, str):
+            return redact_text(value)
         return value
     try:
-        text = json.dumps(clean(json.loads(text)), ensure_ascii=False)
+        return json.dumps(clean(json.loads(text)), ensure_ascii=False)
     except (ValueError, TypeError):
-        pass
-    text = re.sub(r'-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----',
-                  '[REDACTED_PRIVATE_KEY]', text, flags=re.S | re.I)
-    text = re.sub(r'''(?ix)(["']?\b(?:password|passwd|pwd|token|access_token|refresh_token|api[_-]?key|secret)\b["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,;<>]+)''',
-                  r'\1"[REDACTED]"', text)
-    return text
+        return plain(text)
 
 
 def safe_filename(value):

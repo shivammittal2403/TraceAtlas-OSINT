@@ -1,0 +1,250 @@
+{
+  "date": "2026-10-10",
+  "baseline_sha": "a6af08c16ef34f12e9ed99b132d39ac32e0486be",
+  "submitted_files": 20,
+  "identical_reuploads": 17,
+  "distinct_variants": 3,
+  "files": [
+    {
+      "uploaded_name": "accadmicint.py",
+      "domain": "academicint",
+      "bytes": 163328,
+      "sha256": "83acfe121a526f8bda04f1132c0e45e140d8f86aea3e7cde544cc2849fd23bb4",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/academicint.py",
+      "uploaded_syntax": {
+        "line": 3671,
+        "message": "'[' was never closed"
+      },
+      "archived_path": "references/source-academicint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "ACOUSTINT.py",
+      "domain": "acoustint",
+      "bytes": 149267,
+      "sha256": "ddcb9cd455ffcfbc8b374500c4649f3b6110322926b2f2240b21ece187154950",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/acoustint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-acoustint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "adsbint.py",
+      "domain": "adsbint",
+      "bytes": 109946,
+      "sha256": "fc09954d5e82dd52341c869eb9b61eb775be7832b6e93b29c984b3f31ea794a1",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/adsbint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-adsbint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "AIINT.py",
+      "domain": "aiint",
+      "bytes": 482747,
+      "sha256": "70e0e7ad0615541e38265118cf219013cb2e19ff282bceb51f4eaa6301a8c960",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/aiint.py",
+      "uploaded_syntax": {
+        "line": 4177,
+        "message": "unterminated string literal (detected at line 4177)"
+      },
+      "archived_path": "references/source-aiint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "aisint.py",
+      "domain": "aisint",
+      "bytes": 125281,
+      "sha256": "39632f2f0eb78001b89f28afdfb649d0e9730d96f467c45c21f3ae90dd1306dd",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/aisint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-aisint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "anomalint.py",
+      "domain": "anomalyint",
+      "bytes": 119274,
+      "sha256": "879b1c36435cf55f88327f5bcc1eafb5bd7ce9e416b7c7463dbb1b43a3416aad",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/anomalyint.py",
+      "uploaded_syntax": {
+        "line": 2473,
+        "message": "closing parenthesis '}' does not match opening parenthesis '['"
+      },
+      "archived_path": "references/source-anomalyint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "assetint.py",
+      "domain": "assetint",
+      "bytes": 139323,
+      "sha256": "e6b88d471f36894be06babd24fa8b1cfc32ae0c5b0605d53d80f4f3cc97b8d57",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/assetint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-assetint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "audint.py",
+      "domain": "audint",
+      "bytes": 163897,
+      "sha256": "0df851c9a07586b114e33be442e05dc6551e0f4437c770c5913940165b094034",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/audint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-audint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "automotiveint.py",
+      "domain": "automotiveint",
+      "bytes": 144468,
+      "sha256": "a70c89714a1fd080ba9ae4cbda26def49222cb2fbddc52b2a7d1167dd26b895f",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/automotiveint.py",
+      "uploaded_syntax": {
+        "line": 3011,
+        "message": "unterminated string literal (detected at line 3011)"
+      },
+      "archived_path": "references/source-automotiveint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "aviationcyberint.py",
+      "domain": "aviation_cyber_int",
+      "bytes": 22075,
+      "sha256": "6ffbf6f38966b486de9ddf42c3c873546d378550a4c3cbce334d33990ef4092d",
+      "identical_to_archived_source": false,
+      "corrected_path": "scripts/aviation_cyber_int.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/reuploads/aviationcyberint.py.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "aviationint.py",
+      "domain": "aviint",
+      "bytes": 71177,
+      "sha256": "f5dca9d76cc53e21af61f80b8907349e1245932cfb767882bff177ea779b9374",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/aviint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-aviint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "behaveint.py",
+      "domain": "behaviouralint",
+      "bytes": 135852,
+      "sha256": "2a4b72f10eefe970af4b053034385cc2175a4ae7bf20afadbe372267f4a163d3",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/behaviouralint.py",
+      "uploaded_syntax": {
+        "line": 2986,
+        "message": "unexpected indent"
+      },
+      "archived_path": "references/source-behaviouralint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "brandint.py",
+      "domain": "brandint",
+      "bytes": 62942,
+      "sha256": "7b7635a9e557a8a63dedc0a3235df52f04760df568edfcf2a87d8b98a8a6583f",
+      "identical_to_archived_source": false,
+      "corrected_path": "scripts/brandint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/reuploads/brandint.py.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "breachint.py",
+      "domain": "breachint",
+      "bytes": 205089,
+      "sha256": "69b9d844200428aa10aa2700e78b3df1d542ee7df7ad5f4ba14dd59c7fe5b473",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/breachint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-breachint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "cloudint.py",
+      "domain": "cloudint",
+      "bytes": 143557,
+      "sha256": "36fb4205ef73e4a5136f760483c837f65cb50b85187df4bd33319e5cd53f5ea5",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/cloudint.py",
+      "uploaded_syntax": {
+        "line": 192,
+        "message": "invalid syntax"
+      },
+      "archived_path": "references/source-cloudint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "codeint.py",
+      "domain": "codeint",
+      "bytes": 133973,
+      "sha256": "e32055f5bc3bf9c877d091f2626be01ff1a9d57ca35b2fd296840e22524b521e",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/codeint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-codeint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "comint.py",
+      "domain": "comint",
+      "bytes": 183101,
+      "sha256": "7affb2109bdaa135141a09d9a47dc6bc3e21070744e863ee3c807f27e03bd1de",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/comint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-comint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "containerint.py",
+      "domain": "containerint",
+      "bytes": 184628,
+      "sha256": "5b78dc311c8844152dfd2acfe83d2cfb145722d0381ec406c0040231aa8f6258",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/containerint.py",
+      "uploaded_syntax": {
+        "line": 2828,
+        "message": "positional argument follows keyword argument"
+      },
+      "archived_path": "references/source-containerint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "contradictionint.py",
+      "domain": "contradictionint",
+      "bytes": 31288,
+      "sha256": "1bc12e138919cec37cf19ed28c62db31e4493382907288a9a6911693f450f90c",
+      "identical_to_archived_source": false,
+      "corrected_path": "scripts/contradictionint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/reuploads/contradictionint.py.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    },
+    {
+      "uploaded_name": "Pasted text (20).txt",
+      "domain": "companyint",
+      "bytes": 91631,
+      "sha256": "e6b2c42fa98c319079e9a1c3e6ce5d739ecb3ffd91897b41cbac569ca1fe9307",
+      "identical_to_archived_source": true,
+      "corrected_path": "scripts/companyint.py",
+      "uploaded_syntax": "valid",
+      "archived_path": "references/source-companyint.txt",
+      "disposition": "Merged into existing corrected module; existing repairs retained"
+    }
+  ]
+}

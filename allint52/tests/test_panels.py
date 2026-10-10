@@ -212,6 +212,15 @@ class URLTests(unittest.TestCase):
         for text in [json.dumps({'outer': [{'password': 'fixture-value'}]}), '<input password="fixture-value">', "token='fixture-value'"]:
             self.assertNotIn('fixture-value', webint.redact_sensitive_text(text))
 
+    def test_structured_redaction_preserves_ids_and_nested_string_secrets(self):
+        value={'resource-secret':{'id':'resource-secret','password':'fixture-value',
+               'note':'token=fixture-token', 'nested':json.dumps({'api_key':'fixture-key'})}}
+        result=json.loads(_support.redact_text(json.dumps(value)))
+        self.assertEqual(result['resource-secret']['id'],'resource-secret')
+        self.assertEqual(result['resource-secret']['password'],'[REDACTED]')
+        self.assertNotIn('fixture-token',json.dumps(result))
+        self.assertNotIn('fixture-key',json.dumps(result))
+
 
 class MediaTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'FFmpeg optional')

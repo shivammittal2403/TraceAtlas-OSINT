@@ -19,6 +19,8 @@ Read the [140-discipline catalog](references/intelligence-catalog.md) and [machi
 
 Use the catalog's `references/spec-*.md` paths for twelve exact specialist prompts extracted from the chat export. Use [chat index](references/chat-index.json) to locate user content and visible answer phases. Avoid reading internal reasoning phases. Read original files through [source manifest](references/source-manifest.json); all 29 are preserved with byte hashes. Read [repair ledger](references/repair-ledger.json) and [verification](references/verification.md) for actual scope and limitations.
 
+Use [reupload audit](references/reupload-audit.json) to map the twenty files submitted again on 2026-10-10, including alternate filenames, to their corrected modules. Seventeen reuse byte-identical archives; three distinct variants have separate archived copies. Retain existing repairs when merging source variants.
+
 ## Execute local analysis
 
 From repository root, run:
@@ -32,6 +34,8 @@ python skill/traceatlas-intelligence/scripts/validate_pack.py
 Require `case_id`, `task_id`, `objective`, and `authorization` containing `approved: true`, matching `case_id`, and a nonempty `basis`. Keep `model_mode: LOCAL_ONLY`. Operator declarations are local scope controls, not authenticated tenant permissions. For file analysis, supply `input_file` and `authorization.allowed_root`; accept regular files within that root up to 16 MiB through the shared runner.
 
 Supply native domain fields from each module's contract. For CLOUDINT/CODEINT, provide `records` keyed by an existing analyst `add_*` suffix, such as `source`, `evidence`, `resource` or `repository`, with arrays of native dataclass records. Validate enum values and fields. Never substitute built-in samples for missing evidence. Use native `--sample` only for explicit synthetic evaluations.
+
+Reject malformed typed records instead of coercing strings, nulls or booleans into unrelated field types. Preserve zero-record arrays as insufficient data. Derive recommendations, histories and report context from supplied records. Treat `dual_ai_review` outputs marked `DETERMINISTIC_CHECKLIST` as local checks; `independent_review_performed: false` means no independent model review ran. Keep task authorization and input case IDs bound to the outer Task case.
 
 Bind modules to the existing Employee runtime with `traceatlas.ai_workforce.skills.pack.build_pack_employee(domain)` and add them to an existing manager when needed. The adapter returns native results as analysis and does not promote candidate facts. Preserve insufficient-input, blocked and failed states. Do not equate native heuristic "supported facts" with canonical verified facts. No live collection or independent AI review runs through this adapter.
 

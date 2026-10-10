@@ -46,8 +46,19 @@ def validate():
         path=ROOT/module['path'];data=path.read_bytes()
         assert hashlib.sha256(data).hexdigest()==module['sha256'],str(path)
         compile(data,str(path),'exec')
+    reuploads=json.loads((ROOT/'references/reupload-audit.json').read_text())
+    assert reuploads['submitted_files']==20==len(reuploads['files'])
+    assert reuploads['identical_reuploads']==sum(row['identical_to_archived_source'] for row in reuploads['files'])==17
+    assert reuploads['distinct_variants']==3
+    assert len({row['domain'] for row in reuploads['files']})==20
+    for row in reuploads['files']:
+        data=(ROOT/row['archived_path']).read_bytes()
+        assert len(data)==row['bytes']
+        assert hashlib.sha256(data).hexdigest()==row['sha256'],row['uploaded_name']
+        assert (ROOT/row['corrected_path']).is_file()
     json.loads((ROOT/'references/chat-export.json').read_text())
-    return {'status':'PASS','originals':29,'catalog_entries':140,'corrected_modules':20,
+    return {'status':'PASS','originals':29,'rechecked_uploads':20,'distinct_reupload_variants':3,
+            'catalog_entries':140,'corrected_modules':20,
             'graph_nodes':434,'graph_edges':671}
 
 if __name__=='__main__':

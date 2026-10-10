@@ -1,3 +1,28 @@
+# Skill pack recheck — 2026-10-10
+
+Recheck baseline: `a6af08c16ef34f12e9ed99b132d39ac32e0486be`. The new submission contains
+19 named Python uploads and the existing corporate source. Seventeen are identical to the first
+archived sources; three compact Python variants are preserved separately and merged. All twenty
+filename-to-module mappings and source hashes are recorded in `reupload-audit.json`.
+
+The second pass repaired malformed typed record handling, invalid scalar/nested values, empty-array
+status handling, outer Task case binding and JSON redaction that corrupted keys ending in secret
+words. CLOUDINT no longer emits recommendations, confidence, inventory narratives or report histories
+for fixed sample IDs when analyzing a different corpus. CODEINT exports no longer insert sample CI,
+release, container, security-control or commit data into unconfigured/custom results. Next actions and specialist handoffs now derive from current findings and knowledge gaps; empty cases request an input corpus only. Native
+`dual_ai_review` fields now identify a deterministic checklist with no independent review performed.
+
+Current verification: 137 pytest cases passed, 33 desktop unittest cases passed; undefined-name checks,
+skill metadata validation, in-memory source compilation, all 20 imports and provenance validation passed.
+The new regressions include actual/custom and absent record exports, malformed record types, empty
+collections, sensitive ID suffixes, nested secret strings, case mismatches, recommendation references
+real configuration-snapshot history and per-resource storage-log coverage. A separate offline skill-use pass supplied reproducible
+corporate/cloud/code cases and identified the input/redaction/sample-output defects before repair.
+
+This recheck still does not qualify live collection, actual independent AI review, authenticated
+server-side authority or the complete 140-entry catalog as implemented engines. The dated first-pass
+record follows for historical context.
+
 # Skill pack verification — 2026-10-09
 
 ## Scope and contents

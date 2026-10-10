@@ -9,7 +9,8 @@
         "Complete the truncated report tail with existing structured outputs."
       ],
       "syntax": "valid",
-      "sha256": "37697c03def7e9ef07240f509ebe40d7d35fcca588b54b729effeadf7820c9c5"
+      "sha256": "37697c03def7e9ef07240f509ebe40d7d35fcca588b54b729effeadf7820c9c5",
+      "rechecked_uploaded_name": "accadmicint.py"
     },
     {
       "uploaded_name": "Pasted text (2)(8).txt",
@@ -17,7 +18,8 @@
       "path": "scripts/acoustint.py",
       "repairs": [],
       "syntax": "valid",
-      "sha256": "25aaf32873bdc8b0ddfc04e8d4960f7712824487e647971aae643f6ffde8a5ee"
+      "sha256": "25aaf32873bdc8b0ddfc04e8d4960f7712824487e647971aae643f6ffde8a5ee",
+      "rechecked_uploaded_name": "ACOUSTINT.py"
     },
     {
       "uploaded_name": "Pasted text (3)(2).txt",
@@ -25,7 +27,8 @@
       "path": "scripts/adsbint.py",
       "repairs": [],
       "syntax": "valid",
-      "sha256": "480183b46212e82e81589749d478fc4d6fb089a786b47fc0c7dd4bdec15ce3a2"
+      "sha256": "480183b46212e82e81589749d478fc4d6fb089a786b47fc0c7dd4bdec15ce3a2",
+      "rechecked_uploaded_name": "adsbint.py"
     },
     {
       "uploaded_name": "Pasted text (4).txt",
@@ -35,7 +38,8 @@
         "Use the complete second implementation; retain the truncated first copy in source references."
       ],
       "syntax": "valid",
-      "sha256": "7a000b4b33a973ce3504e43420fa52030557823a136d4eeee69d665e7bcd3109"
+      "sha256": "7a000b4b33a973ce3504e43420fa52030557823a136d4eeee69d665e7bcd3109",
+      "rechecked_uploaded_name": "AIINT.py"
     },
     {
       "uploaded_name": "Pasted text (5).txt",
@@ -43,7 +47,8 @@
       "path": "scripts/aisint.py",
       "repairs": [],
       "syntax": "valid",
-      "sha256": "f9007952f45192f65801da85b4f5659d30e8863517f4ff68aa137f5a75ecff0a"
+      "sha256": "f9007952f45192f65801da85b4f5659d30e8863517f4ff68aa137f5a75ecff0a",
+      "rechecked_uploaded_name": "aisint.py"
     },
     {
       "uploaded_name": "Pasted text (6).txt",
@@ -54,7 +59,8 @@
         "Repair mismatched comprehension delimiter."
       ],
       "syntax": "valid",
-      "sha256": "935def0b957b557656198e2addc5b32367b4daf79dbc15de2a8779f450da32f2"
+      "sha256": "935def0b957b557656198e2addc5b32367b4daf79dbc15de2a8779f450da32f2",
+      "rechecked_uploaded_name": "anomalint.py"
     },
     {
       "uploaded_name": "Pasted text (7).txt",
@@ -64,7 +70,8 @@
         "Separate the pasted sample JSON from executable Python."
       ],
       "syntax": "valid",
-      "sha256": "2b40d25edc1f657c589f439d6bd8502982f1ed056122db2ba12f846ff776a284"
+      "sha256": "2b40d25edc1f657c589f439d6bd8502982f1ed056122db2ba12f846ff776a284",
+      "rechecked_uploaded_name": "assetint.py"
     },
     {
       "uploaded_name": "Pasted text (8).txt",
@@ -74,7 +81,8 @@
         "Reuse the existing repaired AUDINT panel with decoder limits, safe local paths and stale export controls."
       ],
       "syntax": "valid",
-      "sha256": "92ad52b61d41fac86fb4ca2a775f4e5987097b114b4f7551c70f27610aa4a7c6"
+      "sha256": "92ad52b61d41fac86fb4ca2a775f4e5987097b114b4f7551c70f27610aa4a7c6",
+      "rechecked_uploaded_name": "audint.py"
     },
     {
       "uploaded_name": "Pasted text (9).txt",
@@ -84,17 +92,20 @@
         "Separate the pasted sample JSON from executable Python."
       ],
       "syntax": "valid",
-      "sha256": "9cdf691a6f07e6a6a5881e2f9addd99044b4f9ff5357d38d952a8a4f3f17caea"
+      "sha256": "9cdf691a6f07e6a6a5881e2f9addd99044b4f9ff5357d38d952a8a4f3f17caea",
+      "rechecked_uploaded_name": "automotiveint.py"
     },
     {
       "uploaded_name": "Pasted markdown (10).md",
       "domain": "aviation_cyber_int",
       "path": "scripts/aviation_cyber_int.py",
       "repairs": [
-        "Decode Markdown punctuation escapes and nonbreaking indentation."
+        "Decode Markdown punctuation escapes and nonbreaking indentation.",
+        "Merge the clean Python source variant without changing the implementation."
       ],
       "syntax": "valid",
-      "sha256": "edad2db6fb59d34bc96bbd091c43175a01aca86ae7542e405b9852eac7635c84"
+      "sha256": "8c2d3d41f20ca590fc3f13f7914b2ec1737ce679186a2e3cd7a3eaffb0fd7a1e",
+      "rechecked_uploaded_name": "aviationcyberint.py"
     },
     {
       "uploaded_name": "Pasted text (11).txt",
@@ -105,7 +116,8 @@
         "Redact sensitive JSON keys before constructing observations or recursively extracting values."
       ],
       "syntax": "valid",
-      "sha256": "684e676e91df1c4ee3c2bca8ced44583a7153400d19f343149a3b2ecf5a2ae6a"
+      "sha256": "684e676e91df1c4ee3c2bca8ced44583a7153400d19f343149a3b2ecf5a2ae6a",
+      "rechecked_uploaded_name": "aviationint.py"
     },
     {
       "uploaded_name": "Pasted text (12).txt",
@@ -116,7 +128,8 @@
         "Repair report comparison indentation."
       ],
       "syntax": "valid",
-      "sha256": "eab3a16656dcbf96c86483b4ccece92954685a7e721c9eef5324f3ef1abb380b"
+      "sha256": "eab3a16656dcbf96c86483b4ccece92954685a7e721c9eef5324f3ef1abb380b",
+      "rechecked_uploaded_name": "behaveint.py"
     },
     {
       "uploaded_name": "Pasted markdown (13).md",
@@ -124,10 +137,12 @@
       "path": "scripts/brandint.py",
       "repairs": [
         "Decode Markdown punctuation escapes and nonbreaking indentation.",
-        "Separate the pasted sample JSON from executable Python."
+        "Separate the pasted sample JSON from executable Python.",
+        "Merge the clean Python source variant and keep appended sample JSON outside executable imports."
       ],
       "syntax": "valid",
-      "sha256": "c37e5fe5973e78f124a178253d6bb27c238a657a60dc77907ed6927a02e048f6"
+      "sha256": "491542ed4b55920be7f20ba436fb12715feeffffba9408604f3d7840cf41b679",
+      "rechecked_uploaded_name": "brandint.py"
     },
     {
       "uploaded_name": "Pasted text (14).txt",
@@ -138,25 +153,36 @@
         "Redact sensitive JSON keys before constructing observations or recursively extracting values."
       ],
       "syntax": "valid",
-      "sha256": "b22c0784064119c0f282f603cc942c4c8277d49a611ce762082e20c968c223e5"
+      "sha256": "b22c0784064119c0f282f603cc942c4c8277d49a611ce762082e20c968c223e5",
+      "rechecked_uploaded_name": "breachint.py"
     },
     {
       "uploaded_name": "Pasted text (15).txt",
       "domain": "cloudint",
       "path": "scripts/cloudint.py",
       "repairs": [
-        "Repair malformed enum member identifier."
+        "Repair malformed enum member identifier.",
+        "Derive recommendations, summaries, configuration drift, residency and timeline from supplied records; remove unconditional sample IDs and unsupported confidence.",
+        "Identify deterministic checklist output explicitly; do not imply an independent model review ran.",
+        "Generate next actions and specialist handoffs from current findings and knowledge gaps; empty cases request a corpus only.",
+        "Limit storage access-log gaps to supplied object-storage resources lacking matching data-plane audit records."
       ],
       "syntax": "valid",
-      "sha256": "b14372099941caad2362da407e84af308004e8152baf94047a5520ef7207f601"
+      "sha256": "01029acc66ca5973aa04fdb1a64f6aba55633e68974453fcec977110949c9a34",
+      "rechecked_uploaded_name": "cloudint.py"
     },
     {
       "uploaded_name": "Pasted text (16).txt",
       "domain": "codeint",
       "path": "scripts/codeint.py",
-      "repairs": [],
+      "repairs": [
+        "Derive exported CI, artifact, container, control and timeline context from supplied records; remove unconditional sample facts.",
+        "Identify deterministic checklist output explicitly; do not imply an independent model review ran.",
+        "Generate next actions and specialist handoffs from current findings and knowledge gaps; empty cases request a corpus only."
+      ],
       "syntax": "valid",
-      "sha256": "ac48fc8caf4f45eac5bc7e8ddddae518a05efb74ff15d06f7d3fbdcccd7d6cca"
+      "sha256": "13e1d0bf25b6219bd2ca350d5109828a7bbbfd1ba3b8eb8fb508f55529a1532d",
+      "rechecked_uploaded_name": "codeint.py"
     },
     {
       "uploaded_name": "Pasted text (17).txt",
@@ -166,7 +192,8 @@
         "Remove invented authorization and reuse the existing stale-output export guard."
       ],
       "syntax": "valid",
-      "sha256": "055932edd8e4010c082515dbfbeb43750e385116197d8731de857143d7f1d4f5"
+      "sha256": "055932edd8e4010c082515dbfbeb43750e385116197d8731de857143d7f1d4f5",
+      "rechecked_uploaded_name": "comint.py"
     },
     {
       "uploaded_name": "Pasted text (18).txt",
@@ -177,7 +204,8 @@
         "Repair missing keyword assignment and dataclass field ordering; use the shared local-input runner instead of a truncated demo."
       ],
       "syntax": "valid",
-      "sha256": "61a336bc0e0e460546df9310ea126d18c86536e723eba25358e8f2d3df8b7337"
+      "sha256": "61a336bc0e0e460546df9310ea126d18c86536e723eba25358e8f2d3df8b7337",
+      "rechecked_uploaded_name": "containerint.py"
     },
     {
       "uploaded_name": "Pasted markdown (19).md",
@@ -185,10 +213,12 @@
       "path": "scripts/contradictionint.py",
       "repairs": [
         "Decode Markdown punctuation escapes and nonbreaking indentation.",
-        "Restore named numeric/range regex groups corrupted by Markdown bold/escaping."
+        "Restore named numeric/range regex groups corrupted by Markdown bold/escaping.",
+        "Merge the clean Python source variant while retaining repaired numeric regexes."
       ],
       "syntax": "valid",
-      "sha256": "0a53334112ca99e66f9b1855bafa2f99c7c923eefa80001b603cbf0ab897e61e"
+      "sha256": "b84c734947986bafe5f899ced5438a1db699acfdfb973cc81c007ff5c78c36fa",
+      "rechecked_uploaded_name": "contradictionint.py"
     },
     {
       "uploaded_name": "Pasted text (20).txt",
@@ -202,8 +232,12 @@
         "Run contradiction, hypothesis, knowledge-gap and specialist-handoff finalization through the shared runner."
       ],
       "syntax": "valid",
-      "sha256": "5409da0e5bfd696e137e02a39387787fe468c7cc052d0101ed1978ed9e053dbd"
+      "sha256": "5409da0e5bfd696e137e02a39387787fe468c7cc052d0101ed1978ed9e053dbd",
+      "rechecked_uploaded_name": "Pasted text (20).txt"
     }
   ],
-  "scope": "Offline source repairs and explicit Employee binding; no live or production qualification."
+  "scope": "Offline source repairs and explicit Employee binding; no live or production qualification.",
+  "recheck_date": "2026-10-10",
+  "recheck_baseline_sha": "a6af08c16ef34f12e9ed99b132d39ac32e0486be",
+  "reupload_manifest": "references/reupload-audit.json"
 }

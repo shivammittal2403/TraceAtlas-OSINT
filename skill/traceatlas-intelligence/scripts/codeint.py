@@ -1454,89 +1454,17 @@ class CodeInt:
                     existing.add(desc)
 
     def build_next_actions(self) -> None:
-        self.actions = [
-            NextAction(
-                id="ACT-RESOLVE-DEPLOYED-COMMIT",
-                description="Resolve deployed production commit/artifact using authorized deployment metadata before making production-impact claims.",
-                priority=1,
-                privacy_impact="LOW_IF_AUTHORIZED",
-                expected_gain=0.90,
-                specialist="CLOUDINT / DEPLOYMENTINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-VULNINT-HANDOFF",
-                description="Hand off access-control/risky-pattern findings to VULNINT for applicability, reachability, and exploitability validation.",
-                priority=2,
-                privacy_impact="LOW",
-                expected_gain=0.85,
-                specialist="VULNINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-CREDINT-HANDOFF",
-                description="Hand off secret candidates to CREDINT. CODEINT must not test, use, or redeem secrets.",
-                priority=3,
-                privacy_impact="LOW",
-                expected_gain=0.85,
-                specialist="CREDINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-REGEN-SBOM",
-                description="Regenerate SBOM from authoritative lockfile/build artifact and reconcile with source tree.",
-                priority=4,
-                privacy_impact="LOW",
-                expected_gain=0.75,
-                specialist="PACKAGEINT / SUPPLYCHAININT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-AUTHZ-TESTS",
-                description="Add or run authorized regression tests for authorization behavior on affected routes.",
-                priority=5,
-                privacy_impact="LOW",
-                expected_gain=0.80,
-                specialist="QA / CODEINT",
-                requires_human_approval=True,
-            ),
-            NextAction(
-                id="ACT-PIN-CI-ACTIONS",
-                description="Review and pin third-party CI actions to immutable commit refs through approved change workflow.",
-                priority=6,
-                privacy_impact="LOW",
-                expected_gain=0.70,
-                specialist="SUPPLYCHAININT",
-                requires_human_approval=True,
-            ),
-            NextAction(
-                id="ACT-LEGAL-LICENSE",
-                description="Route license conflict candidates to LEGALINT; CODEINT does not make legal compliance determinations.",
-                priority=7,
-                privacy_impact="LOW",
-                expected_gain=0.60,
-                specialist="LEGALINT",
-                requires_human_approval=False,
-            ),
-            NextAction(
-                id="ACT-HUMAN-REVIEW",
-                description="Require human review before patching, disclosure, blame/authorship claims, or production deployment decisions.",
-                priority=8,
-                privacy_impact="PROTECTIVE",
-                expected_gain=0.80,
-                specialist=None,
-                requires_human_approval=True,
-            ),
-            NextAction(
-                id="ACT-NO-OFFENSE",
-                description="Do not generate exploits, test secrets, execute unknown code, bypass security controls, or tamper with repositories/CI.",
-                priority=99,
-                privacy_impact="PROTECTIVE",
-                expected_gain=0.0,
-                specialist=None,
-                requires_human_approval=False,
-            ),
-        ]
+        self.actions = []
+        if not (self.repositories or self.files or self.evidence or self.findings):
+            self.actions.append(NextAction(
+                id="ACT-CONFIGURE-EVIDENCE",description="Supply an authorized local corpus before assigning specialist analysis.",
+                priority=1,privacy_impact="LOW_IF_AUTHORIZED",expected_gain=0.95,specialist="CODEINT",requires_human_approval=False))
+            return
+        for index,gap in enumerate(self.gaps,1):
+            self.actions.append(NextAction(
+                id=new_id("ACT-GAP-",gap.id),description=f"Review {gap.recommended_source or 'authorized source records'} to resolve: {gap.description}",
+                priority=index,privacy_impact="LOW_IF_AUTHORIZED",expected_gain=gap.expected_information_value,
+                specialist=gap.specialist,requires_human_approval=False))
 
     def build_recommendations(self) -> None:
         recs: List[Recommendation] = []
@@ -1641,17 +1569,20 @@ class CodeInt:
         self.recommendations = recs
 
     def build_handoffs(self) -> None:
-        self.handoffs = [
-            {"specialist": "VULNINT", "reason": "Vulnerability applicability, CVE/CWE context, exploitability validation."},
-            {"specialist": "CREDINT", "reason": "Secret candidate exposure handling; CODEINT must not use/test secrets."},
-            {"specialist": "MALINT", "reason": "If malicious behavior candidates require sample/context analysis."},
-            {"specialist": "PACKAGEINT", "reason": "Package identity, versions, registry metadata, maintainer context."},
-            {"specialist": "SUPPLYCHAININT", "reason": "Third-party dependencies, CI actions, vendor propagation."},
-            {"specialist": "REPOINT", "reason": "Repository metadata, forks, contributors, releases, branch protection context."},
-            {"specialist": "CLOUDINT", "reason": "Deployed cloud artifact/runtime correlation if needed."},
-            {"specialist": "LEGALINT", "reason": "License compliance and IP interpretation."},
-            {"specialist": "INCIDENTINT", "reason": "If code findings connect to active incident evidence."},
-        ]
+        self.handoffs = []
+        if not (self.repositories or self.files or self.evidence or self.findings):
+            return
+        seen = set()
+        for item in list(self.findings.values()) + self.gaps:
+            specialist = getattr(item,"specialist_handoff",None) or getattr(item,"specialist",None)
+            if not specialist:
+                continue
+            reason = getattr(item,"description",None) or getattr(item,"statement",None) or getattr(item,"title",None)
+            key = (specialist,reason)
+            if key in seen:
+                continue
+            seen.add(key)
+            self.handoffs.append({"specialist":specialist,"reason":reason,"basis_id":item.id,"status":"PROPOSED_FROM_LOCAL_ANALYSIS"})
 
     # -----------------------------------------------------------------
     # Hypotheses / dual AI / summary
@@ -1763,22 +1694,24 @@ class CodeInt:
         if any(f.finding_type == FindingType.CI_SUPPLY_CHAIN_CONTEXT for f in self.findings.values()):
             issues.append("CI/third-party action supply-chain context requires SUPPLYCHAININT review.")
 
-        if not issues:
-            verdict = "AGREE"
+        if not self.evidence:
+            verdict = "INSUFFICIENT_EVIDENCE"
+        elif not issues:
+            verdict = "DETERMINISTIC_CHECKLIST_COMPLETE"
         elif len(issues) <= 5:
-            verdict = "PARTIAL_AGREEMENT"
+            verdict = "CHECKLIST_ISSUES_IDENTIFIED"
         else:
             verdict = "INSUFFICIENT_EVIDENCE"
 
         return {
             "primary_code_analyst": (
-                "Static analysis of the authorized repository snapshot identifies an access-control gap candidate "
-                "on a reachable API route, a historical secret-shaped candidate, documentation drift, SBOM/lockfile "
-                "version conflict, and mutable CI action references. Production exploitability and secret validity "
-                "remain unresolved."
+                f"Supplied corpus contains {len(self.repositories)} repositories, {len(self.files)} files "
+                f"and {len(self.findings)} findings. This is a deterministic checklist of local analysis."
             ),
             "independent_code_skeptic_issues": issues,
             "verdict": verdict,
+            "review_mode": "DETERMINISTIC_CHECKLIST",
+            "independent_review_performed": False,
             "adversarial_checks": [
                 "Is repository HEAD assumed to be production? No; deployment unknown.",
                 "Is package presence assumed runtime reachable? No; reachability graph used.",
@@ -1788,57 +1721,22 @@ class CodeInt:
                 "Is SBOM treated as deployed artifact? No; conflict flagged.",
                 "Were unknown code or secrets executed/used? No.",
             ],
-            "note": "AI agreement is analytical agreement, not independent technical verification.",
+            "note": "Deterministic checklist only; no independent AI review or source corroboration was performed.",
         }
 
     def analyst_summary(self, dual: Dict[str, Any]) -> str:
-        repo = next(iter(self.repositories.values()), None)
-        commit = self.commits.get(repo.current_commit) if repo else None
-        auth_findings = [f for f in self.findings.values() if f.finding_type == FindingType.ACCESS_CONTROL_GAP_CANDIDATE]
-        secret_findings = [f for f in self.findings.values() if f.finding_type == FindingType.SECRET_CANDIDATE]
-
-        lines = [
-            f"REPOSITORY: {repo.name if repo else 'UNKNOWN'} at commit {commit.hash if commit else 'UNKNOWN'}.",
-            f"LANGUAGES: {', '.join(l.value for l in repo.languages) if repo else 'UNKNOWN'}.",
-            f"FRAMEWORKS: {', '.join(f.value for f in repo.frameworks) if repo else 'UNKNOWN'}.",
-            "ARCHITECTURE: FastAPI-like backend service with API routes, auth dependency module, database query helper, tests, CI, container build context.",
-            "",
-            "SECURITY FINDINGS:",
-        ]
-
-        if auth_findings:
-            f = auth_findings[0]
-            lines.append(
-                f"- {f.id}: {f.title}; state={f.state.value}; reachability={f.reachability.value}; "
-                f"confidence={f.confidence}; production_impact=UNKNOWN."
-            )
-        else:
-            lines.append("- No access-control gap candidate identified.")
-
-        if secret_findings:
-            f = secret_findings[0]
-            lines.append(
-                f"- {f.id}: {f.title}; state={f.state.value}; secret validity=NOT_TESTED; raw value=NOT EXPOSED."
-            )
-        else:
-            lines.append("- No secret candidate identified.")
-
-        lines.extend([
-            "",
-            "CONTRADICTIONS:",
-            f"- {len(self.contradictions)} open contradiction(s), including documentation/code and SBOM/lockfile conflicts.",
-            "",
-            "NOT ESTABLISHED:",
-            "- Production vulnerability.",
-            "- Exploitability.",
-            "- Real-world authorship or blame.",
-            "- Secret validity.",
-            "- Deployed artifact identity.",
-            "",
-            f"DUAL-AI REVIEW: {dual['verdict']}.",
-            "PRIVACY/POLICY: Defensive static-first analysis only. No private repo access, no secret use/testing, no unknown code execution, no exploit generation.",
-            "NEXT ACTION: Resolve deployed commit, hand off secret candidate to CREDINT, hand off access-control finding to VULNINT, regenerate SBOM, add authorization tests.",
-        ])
+        lines = [f"CASE: {self.case.case_id}",
+                 f"SUPPLIED CORPUS: {len(self.repositories)} repositories, {len(self.files)} files, {len(self.evidence)} evidence records."]
+        for repository in self.repositories.values():
+            lines.append(f"REPOSITORY: {repository.id}; name={repository.name}; declared commit={repository.current_commit or 'unknown'}.")
+            lines.append("LANGUAGES: " + (", ".join(language.value for language in repository.languages) or "unknown"))
+            lines.append("FRAMEWORKS: " + (", ".join(framework.value for framework in repository.frameworks) or "unknown"))
+        for finding in self.findings.values():
+            lines.append(f"FINDING: {finding.id}; {finding.title}; local state={finding.state.value}; production impact unresolved.")
+        lines.extend([f"OPEN CONTRADICTIONS: {len(self.contradictions)}.",
+                      f"DETERMINISTIC CHECKLIST: {dual['verdict']}.",
+                      "No model-based independent review, live repository access, code execution or secret testing was performed.",
+                      "Repository metadata and local findings do not establish deployed architecture or production vulnerabilities."])
         return "\n".join(lines)
 
     # -----------------------------------------------------------------
@@ -3015,7 +2913,7 @@ def build_result(c: CodeInt, status: Status) -> Dict[str, Any]:
         "api_endpoints": [s for s in c.symbols.values() if s.route],
         "cli_commands": [],
         "schemas": [],
-        "databases": ["COMPONENT-DB"],
+        "databases": [component.id for component in c.components.values() if component.component_type.lower() in {"database","db","database_component"}],
         "queues": [],
         "external_services": [],
         "cloud_sdks": [],
@@ -3030,63 +2928,30 @@ def build_result(c: CodeInt, status: Status) -> Dict[str, Any]:
         "sboms": list(c.sbom_components.values()),
         "vex_records": [],
         "licenses": list(c.licenses.values()),
-        "ci_cd_pipelines": [
-            {
-                "source_id": "SRC-CI",
-                "file_path": ".github/workflows/ci.yml",
-                "third_party_actions": [
-                    {"uses": "some-org/action@v1", "pinned_to_sha": False}
-                ],
-                "limitations": ["CI config is not actual pipeline execution evidence."],
-            }
-        ],
+        "ci_cd_pipelines": [{"file_id":file.id,"file_path":file.path,"repository_id":file.repository_id,"limitations":["File metadata does not establish pipeline execution."]} for file in c.files.values() if file.path.startswith(".github/workflows/")],
         "build_jobs": [],
-        "artifacts": [
-            {
-                "type": "release",
-                "id": "REL-V120",
-                "version": "1.2.0",
-                "artifact_hashes": ["sha256:release-artifact-placeholder"],
-                "deployment_known": False,
-            }
-        ],
-        "containers": [
-            {
-                "file_path": "Dockerfile",
-                "base_image": "python:3.12-slim-placeholder",
-                "limitations": ["Container file presence does not prove deployed image."],
-            }
-        ],
+        "artifacts": [{"type":"release","id":release.id,"version":release.version,"artifact_hashes":release.artifact_hashes,"deployment_known":False} for release in c.releases.values()],
+        "containers": [{"file_id":file.id,"file_path":file.path,"limitations":["Container file metadata does not establish a deployed image."]} for file in c.files.values() if file.path.rsplit("/",1)[-1]=="Dockerfile"],
         "iac_resources": [],
         "tests": list(c.tests.values()),
         "coverage_context": list(c.coverages.values()),
-        "security_controls": [
-            "AUTHENTICATION_DEPENDENCY_PRESENT",
-            "AUTHORIZATION_DEPENDENCY_PARTIAL",
-            "PARAMETERIZED_QUERY_OBSERVED_PLACEHOLDER",
-            "TESTS_PRESENT_PARTIAL",
-        ],
-        "authentication_context": ["Auth dependency module observed."],
-        "authorization_context": ["Authorization dependency observed on some routes; gap candidate on user lookup route."],
+        "security_controls": sorted({control for repository in c.repositories.values() for control in repository.security_controls}),
+        "authentication_context": [],
+        "authorization_context": [finding for finding in c.findings.values() if finding.finding_type==FindingType.ACCESS_CONTROL_GAP_CANDIDATE],
         "session_context": [],
         "crypto_context": [],
-        "database_context": ["Database query helper observed; parameterization static observation only."],
+        "database_context": [component for component in c.components.values() if component.component_type.lower() in {"database","db","database_component"}],
         "filesystem_context": [],
         "network_context": [],
         "process_execution_context": [],
         "serialization_context": [],
-        "input_validation_context": ["Path parameter user_id reaches database helper; parameterized query observed statically."],
+        "input_validation_context": [],
         "logging_context": [],
         "telemetry_context": [],
         "code_similarity": list(c.similarities.values()),
         "fork_lineage": [p for p in c.provenance.values() if p.state == ProvenanceState.FORK_DERIVED],
         "code_provenance": list(c.provenance.values()),
-        "code_ownership_context": [
-            {
-                "type": "MAINTAINER_METADATA_PLACEHOLDER",
-                "note": "Git/CODEOWNERS metadata is responsibility context, not verified authorship or blame."
-            }
-        ],
+        "code_ownership_context": [],
         "maintainer_context": [],
         "documentation_drift": [f for f in c.findings.values() if f.finding_type == FindingType.DOCUMENTATION_DRIFT],
         "security_findings": list(c.findings.values()),
@@ -3094,33 +2959,7 @@ def build_result(c: CodeInt, status: Status) -> Dict[str, Any]:
         "malicious_behavior_candidates": [f for f in c.findings.values() if f.finding_type == FindingType.MALICIOUS_BEHAVIOR_CANDIDATE],
         "reachability_states": {sid: s.reachability_state.value for sid, s in c.symbols.items()},
         "reachability_analysis": build_reachability_payload(c),
-        "timeline_updates": [
-            {
-                "time": "2025-01-01T00:00:00Z",
-                "event": "Upstream template ancestor commit C-ANCIENT.",
-                "commit_id": "C-ANCIENT",
-            },
-            {
-                "time": "2026-03-01T00:00:00Z",
-                "event": "Historical secret-shaped candidate introduced in C-SECRET.",
-                "commit_id": "C-SECRET",
-            },
-            {
-                "time": "2026-08-01T00:00:00Z",
-                "event": "User lookup route added in C-ROUTE-ADDED.",
-                "commit_id": "C-ROUTE-ADDED",
-            },
-            {
-                "time": "2026-09-15T00:00:00Z",
-                "event": "Secret-shaped value removed in C-FIX-SECRET.",
-                "commit_id": "C-FIX-SECRET",
-            },
-            {
-                "time": "2026-10-08T00:00:00Z",
-                "event": "Analyzed HEAD commit C-HEAD.",
-                "commit_id": "C-HEAD",
-            },
-        ],
+        "timeline_updates": [{"time":commit.timestamp,"event":commit.message or "Supplied commit metadata","commit_id":commit.id,"source_ids":[sid for sid in commit.source_ids if sid in c.sources]} for commit in c.commits.values() if commit.timestamp],
         "observations": list(c.evidence.values()),
         "candidate_facts": list(c.findings.values()),
         "supported_facts": supported_facts,
@@ -3170,15 +3009,10 @@ def build_result(c: CodeInt, status: Status) -> Dict[str, Any]:
         "recommended_next_actions": c.actions,
         "specialist_handoffs": c.handoffs,
         "recommendations": c.recommendations,
-        "limitations": [
-            "Local synthetic demo; no live repository access.",
-            "Static-first; no unknown code execution.",
-            "Secret candidates are not tested or used.",
-            "Source-code risk is not production vulnerability.",
-            "Reachability is not exploitability.",
-            "Documentation is not implementation truth.",
-            "SBOM is not deployed runtime truth.",
-        ] + c.validation_errors,
+        "limitations": ["Synthetic sample corpus." if c.case.sample else "Provided local corpus; no live repository access.",
+            "No unknown code execution or secret testing.",
+            "Native findings are local analysis, not canonical verified facts.",
+            "Source risk, documentation and SBOMs do not independently establish production behavior."] + c.validation_errors,
         "analyst_summary": summary,
         "dual_ai_review": dual,
         "code_graph": build_code_graph(c),
@@ -3237,7 +3071,7 @@ def run_unconfigured_pipeline(case: Case) -> Dict[str, Any]:
             "No security finding can be validated.",
         ],
         "verdict": "INSUFFICIENT_EVIDENCE",
-        "note": "AI agreement is not independent technical verification.",
+        "note": "No independent AI review was performed.",
     }
 
     summary = (
@@ -3248,6 +3082,7 @@ def run_unconfigured_pipeline(case: Case) -> Dict[str, Any]:
 
     result = build_result(c, Status.BLOCKED_CONFIGURATION)
     result["analyst_summary"] = summary
+    dual.update(review_mode="DETERMINISTIC_CHECKLIST", independent_review_performed=False)
     result["dual_ai_review"] = dual
     return result
 
